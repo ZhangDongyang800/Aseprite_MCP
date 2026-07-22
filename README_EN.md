@@ -22,15 +22,6 @@ A Model Context Protocol (MCP) server that enables AI to create pixel art in Ase
 > [!IMPORTANT]
 > This project requires a local installation of [Aseprite](https://aseprite.org/) v1.3+. AI performs drawing via the MCP protocol by calling the Aseprite CLI + Lua scripts.
 
----
-
-##  Table of Contents
-
-- [ How to Use](#-how-to-use)
-- [ What It Can Do](#-what-it-can-do)
-- [ Demo](#-demo)
-- [ Contributing](#-contributing)
-- [ License](#-license)
 
 ---
 

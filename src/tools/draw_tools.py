@@ -64,7 +64,9 @@ def register_draw_tools(mcp, session_manager: SessionManager, runner: AsepriteRu
         session_id: str, x: int, y: int, color: str,
         layer: int = 1, frame: int = 1,
     ) -> dict:
-        """在指定坐标画一个像素。仅用于少量像素修改（1-5个）。
+        """⚠️ 勿循环调用绘制多像素，完整图案请用 draw_from_grid（1次=N像素），多帧动画请用 draw_animation_frames。
+
+        在指定坐标画一个像素。仅用于少量像素修改（1-5个）。
 
         ⚠️ 效率警告：如果需要绘制大量像素（如完整精灵），请改用 draw_from_grid 工具，
         它可以用一次调用绘制整幅图，避免数百次 draw_pixel 调用。
@@ -90,7 +92,9 @@ def register_draw_tools(mcp, session_manager: SessionManager, runner: AsepriteRu
         color: str,
         layer: int = 1, frame: int = 1,
     ) -> dict:
-        """画一条直线。仅用于少量线条绘制。
+        """⚠️ 勿循环调用绘制多像素，完整图案请用 draw_from_grid（1次=N像素），多帧动画请用 draw_animation_frames。
+
+        画一条直线。仅用于少量线条绘制。
 
         ⚠️ 效率警告：如果需要绘制完整精灵（包含大量线条和色块），
         请改用 draw_from_grid 工具，一次调用即可绘制整幅图。
@@ -121,7 +125,9 @@ def register_draw_tools(mcp, session_manager: SessionManager, runner: AsepriteRu
         filled: bool = False,
         layer: int = 1, frame: int = 1,
     ) -> dict:
-        """画一个矩形。仅用于单独绘制少量矩形（1-3个）。
+        """⚠️ 勿循环调用绘制多像素，完整图案请用 draw_from_grid（1次=N像素），多帧动画请用 draw_animation_frames。
+
+        画一个矩形。仅用于单独绘制少量矩形（1-3个）。
 
         ⚠️ 效率警告：如果需要绘制完整精灵（通常包含数十到数百个矩形），
         请改用 draw_from_grid 工具，一次调用即可绘制整幅图。
@@ -155,7 +161,9 @@ def register_draw_tools(mcp, session_manager: SessionManager, runner: AsepriteRu
         filled: bool = False,
         layer: int = 1, frame: int = 1,
     ) -> dict:
-        """画一个椭圆。仅用于单独绘制少量椭圆。
+        """⚠️ 勿循环调用绘制多像素，完整图案请用 draw_from_grid（1次=N像素），多帧动画请用 draw_animation_frames。
+
+        画一个椭圆。仅用于单独绘制少量椭圆。
 
         ⚠️ 效率警告：如果需要绘制完整精灵，请改用 draw_from_grid 工具。
 

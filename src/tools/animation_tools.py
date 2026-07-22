@@ -56,7 +56,9 @@ def register_animation_tools(mcp, session_manager: SessionManager, runner: Asepr
 
     @mcp.tool
     def add_frame(session_id: str, content: str = "copy") -> dict:
-        """添加新帧（复制最后一帧或创建空白帧）。
+        """⚠️ 勿循环调用建多帧动画，多帧请用 draw_animation_frames 一次完成建帧+绘制。
+
+        添加新帧（复制最后一帧或创建空白帧）。
 
         Args:
             session_id: 会话 ID
@@ -80,7 +82,9 @@ def register_animation_tools(mcp, session_manager: SessionManager, runner: Asepr
 
     @mcp.tool
     def set_frame_duration(session_id: str, frame: int, duration: float) -> dict:
-        """设置帧持续时间。
+        """⚠️ 勿逐帧循环调用，多帧请用 apply_timing_preset 批量设置。
+
+        设置帧持续时间。
 
         Args:
             session_id: 会话 ID

@@ -24,20 +24,21 @@ A Model Context Protocol (MCP) server that enables AI to create pixel art in Ase
 
 ---
 
-## 📖 Table of Contents
+##  Table of Contents
 
-- [✨ What It Can Do](#-what-it-can-do)
-- [🚀 How to Use](#-how-to-use)
-- [🤝 Contributing](#-contributing)
-- [📄 License](#-license)
+- [ What It Can Do](#-what-it-can-do)
+- [ How to Use](#-how-to-use)
+- [ Demo](#-demo)
+- [ Contributing](#-contributing)
+- [ License](#-license)
 
 ---
 
-## ✨ What It Can Do
+##  What It Can Do
 
 Let AI create pixel art in Aseprite like a human artist — with a complete workflow supporting pixel-level drawing, multi-layer management, animation frame editing, palette control, animation tags, image transforms, and canvas preview. **38 tools** in total.
 
-### 🖌️ Pixel-Level Drawing
+###  Pixel-Level Drawing
 
 All drawing tools support `layer` and `frame` parameters, allowing drawing on a specific layer and frame (default: layer 1, frame 1).
 
@@ -51,7 +52,7 @@ All drawing tools support `layer` and `frame` parameters, allowing drawing on a 
 | `clear_region` | Clear a region to transparent |
 | `clear_canvas` | Clear the entire canvas |
 
-### 🗂️ Sprite Management
+###  Sprite Management
 
 | Tool | Description |
 |------|-------------|
@@ -60,7 +61,7 @@ All drawing tools support `layer` and `frame` parameters, allowing drawing on a 
 | `save_sprite` | Save as `.ase` / `.png` / `.gif` |
 | `close_session` | Close the session and clean up temporary resources |
 
-### 🎬 Animation & Frames
+###  Animation & Frames
 
 | Tool | Description |
 |------|-------------|
@@ -71,7 +72,7 @@ All drawing tools support `layer` and `frame` parameters, allowing drawing on a 
 | `export_gif` | Export GIF animation (supports scaling) |
 | `export_sprite_sheet` | Export sprite sheet (PNG + JSON data) |
 
-### 📑 Layer Management
+###  Layer Management
 
 | Tool | Description |
 |------|-------------|
@@ -81,7 +82,7 @@ All drawing tools support `layer` and `frame` parameters, allowing drawing on a 
 | `get_layer_info` | Get info for all layers |
 | `move_cel` | Move a cel between layers / frames |
 
-### 🎨 Palette
+###  Palette
 
 | Tool | Description |
 |------|-------------|
@@ -90,7 +91,7 @@ All drawing tools support `layer` and `frame` parameters, allowing drawing on a 
 | `resize_palette` | Resize the palette (number of colors) |
 | `load_palette` | Load a palette from a file (`.gpl` / `.pal` / `.png`) |
 
-### 🏷️ Animation Tags
+###  Animation Tags
 
 | Tool | Description |
 |------|-------------|
@@ -98,7 +99,7 @@ All drawing tools support `layer` and `frame` parameters, allowing drawing on a 
 | `remove_tag` | Remove a tag by name |
 | `get_tags` | Get info for all tags |
 
-### 🔄 Image Transforms
+###  Image Transforms
 
 | Tool | Description |
 |------|-------------|
@@ -109,7 +110,7 @@ All drawing tools support `layer` and `frame` parameters, allowing drawing on a 
 | `invert_color` | Invert all colors |
 | `replace_color` | Replace a specific color |
 
-### 🔍 Canvas Inspection
+###  Canvas Inspection
 
 | Tool | Description |
 |------|-------------|
@@ -117,7 +118,7 @@ All drawing tools support `layer` and `frame` parameters, allowing drawing on a 
 | `get_canvas_info` | Get canvas metadata (size, color mode, etc.) |
 | `get_pixel_color` | Query the color of a pixel at specified coordinates |
 
-### 🧩 Other Capabilities
+###  Other Capabilities
 
 - **MCP Resources** — Session list, default palette, canvas metadata, blend mode list, animation direction list
 - **MCP Prompts** — Sprite creation guide, iteration review guide, animation creation guide, multi-layer workflow guide
@@ -139,7 +140,7 @@ AI Visual Analysis ← base64 PNG ← Image Object ← FastMCP ← export_png.lu
 
 ---
 
-## 🚀 How to Use
+##  How to Use
 
 ### 1. Environment Setup
 
@@ -201,15 +202,36 @@ After configuration, ask your AI tool to use Aseprite-related tools to start cre
 
 ---
 
+##  Demo
+
+
+
+**Example: Chibi Knight Walk Cycle**
+
+<div align="center">
+
+| Sprite Sheet | Preview |
+|--------------|---------|
+| ![](demo/Knightling/chibi_knight_spritesheet.png) | Four-direction walk cycle, 4 frames each |
+
+</div>
+
+**AI Prompt:**
+
+> Use Aseprite MCP to generate a pixel art sprite sheet of a brave knight in silver armor holding a long sword. Four-direction walk cycle (down, up, left, right), 4 frames per direction, 32x32, flat colors, transparent background.
+
+
+---
+
 ## 🤝 Contributing
 
 Issues and Pull Requests are welcome!
 
-I've tried her, but I can't guarantee that she really works well. She still needs more optimization.
+I've tried it, but I can't guarantee it works perfectly. It still needs more optimization.
 
 ---
 
-## 📄 License
+##  License
 
 This project is open-sourced under the [MIT License](LICENSE).
 

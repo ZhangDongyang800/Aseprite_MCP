@@ -25,7 +25,18 @@ local g = tonumber(color_hex:sub(4, 5), 16)
 local b = tonumber(color_hex:sub(6, 7), 16)
 local fill_color = app.pixelColor.rgba(r, g, b, 255)
 
-local cel = sprite.cels[1]
+-- 支持指定图层和帧（默认第1图层第1帧）
+local layer_idx = tonumber(app.params["layer"] or "1")
+local frame_idx = tonumber(app.params["frame"] or "1")
+local target_layer = sprite.layers[layer_idx]
+if not target_layer then
+    print("ERROR: layer not found: " .. layer_idx)
+    return
+end
+local cel = target_layer:cel(frame_idx)
+if not cel then
+    cel = sprite:newCel(target_layer, frame_idx)
+end
 local image = cel.image
 local w = sprite.width
 local h = sprite.height

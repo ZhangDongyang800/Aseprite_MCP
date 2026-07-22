@@ -1,96 +1,179 @@
-# Aseprite MCP Server
+<div align="center">
 
-一个 MCP（Model Context Protocol）服务器，允许 AI（如 Claude）通过像素级绘制原语在 Aseprite 中创建像素艺术精灵，读取画布图片并迭代修正直到满意。
+# 🎨 Aseprite MCP Server
 
-## 核心功能
+**让 AI 在 Aseprite 中画出像素艺术**
 
-- **像素级绘制原语**：draw_pixel, draw_line, draw_rect, draw_ellipse, fill_region, clear_region, clear_canvas
-- **精灵管理**：create_sprite, open_sprite, save_sprite, close_session
-- **画布检查**：get_canvas_preview（返回 PNG 图片供 AI 视觉分析）, get_canvas_info, get_pixel_color
-- **MCP Resources**：会话列表、默认调色板、画布元数据
-- **MCP Prompts**：精灵创作引导、迭代审查引导
+一个 MCP（Model Context Protocol）服务器，让 AI 通过像素级绘制原语在 Aseprite 中创作像素画，读取画布截图并迭代修正，直到画出满意的作品。
 
-## 工作原理
+[![License](https://img.shields.io/github/license/ZhangDongyang800/Aseprite_MCP?style=flat-square&color=blue)](LICENSE)
+[![Python](https://img.shields.io/badge/Python-3.10%2B-3776AB?style=flat-square&logo=python&logoColor=white)](https://www.python.org/)
+[![FastMCP](https://img.shields.io/badge/FastMCP-2.0%2B-FF6B35?style=flat-square)](https://github.com/jlowin/fastmcp)
+[![Aseprite](https://img.shields.io/badge/Aseprite-v1.3%2B-7D9F37?style=flat-square)](https://aseprite.org/)
+[![Stars](https://img.shields.io/github/stars/ZhangDongyang800/Aseprite_MCP?style=flat-square&logo=github&color=yellow)](https://github.com/ZhangDongyang800/Aseprite_MCP/stargazers)
+[![Issues](https://img.shields.io/github/issues/ZhangDongyang800/Aseprite_MCP?style=flat-square&logo=github&color=red)](https://github.com/ZhangDongyang800/Aseprite_MCP/issues)
+
+</div>
+
+<br>
+
+> [!IMPORTANT]
+> 本项目需要本地安装 [Aseprite](https://aseprite.org/) v1.3+，AI 通过 MCP 协议调用 Aseprite CLI + Lua 脚本完成绘制。
+
+---
+
+## 📖 目录
+
+- [✨ 她能做什么](#-她能做什么)
+- [🚀 她怎么使用](#-她怎么使用)
+- [🤝 欢迎你的参与以及贡献](#-欢迎你的参与以及贡献)
+- [📄 开源协议](#-开源协议)
+
+---
+
+## ✨ 她能做什么
+
+让 AI 像人类画师一样，在 Aseprite 里完整地创作像素画 —— 支持像素级绘制、多图层管理、动画帧编辑、调色板控制、动画标签、图像变换、画布预览的完整工作流，共计 **38 个工具**。
+
+### 🖌️ 像素级绘制
+
+所有绘制工具均支持 `layer` 和 `frame` 参数，可在指定图层和帧上绘制（默认第1图层第1帧）。
+
+| 工具 | 说明 |
+|------|------|
+| `draw_pixel` | 在指定坐标画一个像素 |
+| `draw_line` | 画一条直线 |
+| `draw_rect` | 画矩形（支持空心 / 实心） |
+| `draw_ellipse` | 画椭圆（支持空心 / 实心） |
+| `fill_region` | 油漆桶填充连通区域 |
+| `clear_region` | 清除指定区域为透明 |
+| `clear_canvas` | 清空整个画布 |
+
+### 🗂️ 精灵管理
+
+| 工具 | 说明 |
+|------|------|
+| `create_sprite` | 创建新画布（支持 `rgb` / `grayscale` / `indexed` 模式） |
+| `open_sprite` | 打开已有的 `.ase` 或 `.png` 文件 |
+| `save_sprite` | 保存为 `.ase` / `.png` / `.gif` |
+| `close_session` | 关闭会话并清理临时资源 |
+
+### 🎬 动画与帧
+
+| 工具 | 说明 |
+|------|------|
+| `add_frame` | 添加新帧（复制上一帧或创建空白帧） |
+| `remove_frame` | 删除指定帧 |
+| `set_frame_duration` | 设置帧持续时间（秒） |
+| `get_frame_info` | 获取所有帧信息（帧数、每帧时长） |
+| `export_gif` | 导出 GIF 动画（支持缩放） |
+| `export_sprite_sheet` | 导出精灵表（PNG + JSON 数据） |
+
+### 📑 图层管理
+
+| 工具 | 说明 |
+|------|------|
+| `add_layer` | 创建新图层 |
+| `remove_layer` | 删除图层（按名称或索引） |
+| `set_layer_properties` | 设置图层属性（名称、可见性、不透明度、混合模式） |
+| `get_layer_info` | 获取所有图层信息 |
+| `move_cel` | 在图层/帧之间移动 cel |
+
+### 🎨 调色板
+
+| 工具 | 说明 |
+|------|------|
+| `set_palette_color` | 设置调色板中指定索引的颜色 |
+| `get_palette` | 获取当前调色板所有颜色 |
+| `resize_palette` | 调整调色板大小（颜色数量） |
+| `load_palette` | 从文件加载调色板（`.gpl` / `.pal` / `.png`） |
+
+### 🏷️ 动画标签
+
+| 工具 | 说明 |
+|------|------|
+| `add_tag` | 创建动画标签（支持播放方向、循环次数） |
+| `remove_tag` | 按名称删除标签 |
+| `get_tags` | 获取所有标签信息 |
+
+### 🔄 图像变换
+
+| 工具 | 说明 |
+|------|------|
+| `flip_canvas` | 翻转画布（水平 / 垂直） |
+| `resize_sprite` | 缩放精灵尺寸 |
+| `rotate_canvas` | 旋转画布（90° / 180° / 270°） |
+| `crop_sprite` | 裁剪精灵到指定区域 |
+| `invert_color` | 反相所有颜色 |
+| `replace_color` | 替换指定颜色 |
+
+### 🔍 画布检查
+
+| 工具 | 说明 |
+|------|------|
+| `get_canvas_preview` | 导出 PNG 图片供 AI 视觉分析（**核心迭代工具**） |
+| `get_canvas_info` | 获取画布元数据（尺寸、颜色模式等） |
+| `get_pixel_color` | 查询指定坐标像素的颜色值 |
+
+### 🧩 其他能力
+
+- **MCP Resources** — 会话列表、默认调色板、画布元数据、混合模式列表、动画方向列表
+- **MCP Prompts** — 精灵创作引导、迭代审查引导、动画创作引导、多图层工作流引导
+
+> [!TIP]
+> `get_canvas_preview` 是整个工作流的核心：AI 画完之后调用它"看"一眼画布，分析后决定是否修正，形成 **绘制 → 预览 → 分析 → 修正** 的闭环。
+
+<br>
+
+<div align="center">
 
 ```
-AI 请求 → MCP 工具调用 → Python (FastMCP) → subprocess → Aseprite CLI → Lua 脚本 → .ase 文件
+AI 请求 → MCP 工具调用 → FastMCP (Python) → Aseprite CLI → Lua 脚本 → .ase 文件
                                                                     ↓
-AI 视觉分析 ← base64 PNG ← Image 对象 ← FastMCP ← export_png.lua ←─────┘
+AI 视觉分析 ← base64 PNG ← Image 对象 ← FastMCP ← export_png.lua ←─┘
 ```
 
-1. AI 调用 `create_sprite` 创建画布，获得 `session_id`
-2. AI 调用绘制工具（draw_pixel 等）在画布上绘制
-3. AI 调用 `get_canvas_preview` 获取画布 PNG 图片
-4. AI 分析图片，判断是否需要修正
-5. 重复 2-4 直到满意
-6. AI 调用 `save_sprite` 保存最终结果
+</div>
 
-## 安装
+---
 
-### 前置条件
+## 🚀 她怎么使用
 
-- **Python 3.10+**：[下载地址](https://www.python.org/downloads/)
-- **Aseprite v1.3+**：[官网](https://aseprite.org/)，需能通过命令行访问（记住安装路径）
+### 1. 环境准备
 
-### 安装步骤
+在配置 MCP 之前，需要先准备本地开发环境：
+
+| 依赖 | 版本要求 | 下载 |
+|------|---------|------|
+| Python | 3.10+ | [python.org](https://www.python.org/downloads/) |
+| Aseprite | v1.3+ | [aseprite.org](https://aseprite.org/)（需记住安装路径） |
+
+### 2. MCP Server 搭建
 
 ```bash
-# 1. 克隆项目（或下载 ZIP 解压）
-git clone <repository-url>
-cd Aseprite_mcp
-
-# 2. 安装依赖
-pip install fastmcp pytest pytest-asyncio
+git clone https://github.com/ZhangDongyang800/Aseprite_MCP.git
+cd Aseprite_MCP
+pip install fastmcp
 ```
 
-### 配置 Aseprite 路径
+### 3. 客户端配置
 
-MCP 服务器需要知道 Aseprite 的安装位置。有三种方式（任选其一）：
+> [!IMPORTANT]
+> 以下配置中的路径需替换为你本地的实际路径：
+> - `args` 中的 `server.py` 路径
+> - `ASEPRITE_PATH` 环境变量值
+> - `command` 中的 `python` 路径
 
-**方式一：环境变量（推荐）**
+**TRAE：**
 
-```bash
-# Windows PowerShell
-$env:ASEPRITE_PATH = "C:\Program Files\Aseprite\aseprite.exe"
-
-# Linux / macOS
-export ASEPRITE_PATH="/usr/bin/aseprite"
-```
-
-**方式二：修改默认值**
-
-编辑 `src/config.py`，将 `ASEPRITE_PATH` 的默认值改为你的路径。
-
-**方式三：配置文件中传递环境变量**（见下方各工具配置示例）
-
-### 完整环境变量
-
-| 环境变量 | 默认值 | 说明 |
-|---------|--------|------|
-| `ASEPRITE_PATH` | `D:\cxdownload\...\aseprite.exe` | Aseprite 可执行文件路径 |
-| `ASEPRITE_WORK_DIR` | `./work` | 会话工作目录（临时文件存放处） |
-| `ASEPRITE_SESSION_TIMEOUT` | `3600` | 会话超时时间（秒） |
-
-## 在 AI 工具中配置
-
-MCP 服务器的核心是让 AI 工具能调用它。以下是三大主流工具的配置方法。
-
-### Claude Desktop（桌面应用）
-
-**配置文件位置**：
-- Windows: `%APPDATA%\Claude\claude_desktop_config.json`
-- macOS: `~/Library/Application Settings/Claude/claude_desktop_config.json`
-
-**打开方式**：Claude Desktop → 设置 → Developer → Edit Config
-
-**配置内容**：
+打开 TRAE → 设置 → MCP → 添加 MCP Server，粘贴：
 
 ```json
 {
   "mcpServers": {
     "aseprite": {
       "command": "python",
-      "args": ["C:\\path\\to\\Aseprite_mcp\\server.py"],
+      "args": ["C:\\path\\to\\Aseprite_MCP\\server.py"],
       "env": {
         "ASEPRITE_PATH": "C:\\Program Files\\Aseprite\\aseprite.exe"
       }
@@ -99,193 +182,38 @@ MCP 服务器的核心是让 AI 工具能调用它。以下是三大主流工具
 }
 ```
 
-> Windows 注意：路径中的反斜杠要双写 `\\`，或使用正斜杠 `/`。
+**Codex CLI：**
 
-### Claude Code（CLI 工具）
-
-使用命令行添加（最简单）：
-
-```bash
-# 添加 MCP 服务器
-claude mcp add aseprite -- python /path/to/Aseprite_mcp/server.py
-
-# 带环境变量添加
-claude mcp add aseprite -e ASEPRITE_PATH="C:\Program Files\Aseprite\aseprite.exe" -- python /path/to/Aseprite_mcp/server.py
-
-# 查看已配置的服务器
-claude mcp list
-
-# 删除服务器
-claude mcp remove aseprite
-```
-
-### TRAE IDE
-
-**配置方式一：UI 界面（推荐）**
-
-1. 打开 TRAE → 右上角 AI 侧栏 → 设置图标 → MCP
-2. 点击"添加 MCP Server"或"手动配置"
-3. 粘贴下方 JSON 配置
-
-**配置方式二：编辑配置文件**
-
-配置文件位置：项目根目录 `.trae/mcp.json` 或全局配置
-
-```json
-{
-  "mcpServers": {
-    "aseprite": {
-      "command": "python",
-      "args": ["C:\\path\\to\\Aseprite_mcp\\server.py"],
-      "env": {
-        "ASEPRITE_PATH": "C:\\Program Files\\Aseprite\\aseprite.exe"
-      }
-    }
-  }
-}
-```
-
-> Windows 下如果 `python` 命令不生效，改用 `"command": "cmd", "args": ["/c", "python", "C:\\path\\to\\server.py"]`。
-
-配置完成后，在聊天框选择"Builder with MCP"智能体即可使用。
-
-### OpenAI Codex CLI
-
-Codex 使用 TOML 格式配置（与 Claude/TRAE 的 JSON 不同）。
-
-**配置文件位置**：
-- Windows: `C:\Users\<用户名>\.codex\config.toml`
-- Linux / macOS: `~/.codex/config.toml`
-
-**配置内容**：
+配置文件：`~/.codex/config.toml`
 
 ```toml
 [mcp_servers.aseprite]
 command = "python"
-args = ["/path/to/Aseprite_mcp/server.py"]
+args = ["/path/to/Aseprite_MCP/server.py"]
 
 [mcp_servers.aseprite.env]
 ASEPRITE_PATH = "C:\\Program Files\\Aseprite\\aseprite.exe"
 ```
 
-保存后重启 Codex，在终端内即可调用 Aseprite 工具。
+配置完成后，在 AI 工具中让 AI 使用 Aseprite 相关工具即可开始创作。
 
-### 验证配置是否成功
+---
 
-配置完成后，在 AI 工具中输入：
+## 🤝 欢迎你的参与以及贡献
 
-> "列出可用的 Aseprite MCP 工具"
+欢迎提交 [Issue](https://github.com/ZhangDongyang800/Aseprite_MCP/issues) 和 [Pull Request](https://github.com/ZhangDongyang800/Aseprite_MCP/pulls)！
 
-如果 AI 能列出 `create_sprite`、`draw_pixel`、`get_canvas_preview` 等工具，说明配置成功。
 
-## 使用
+---
 
-### 直接运行（调试用）
+## 📄 开源协议
 
-```bash
-python server.py
-```
+本项目基于 [MIT License](LICENSE) 开源。
 
-### 演示脚本
+Copyright © 2026 [ZhangDongyang800](https://github.com/ZhangDongyang800)
 
-```bash
-python demo.py
-```
+<div align="center">
 
-演示脚本会绘制一个 16x16 的像素艺术笑脸，完整展示创建→绘制→预览→保存的工作流。
+<sub>Built with ❤️ for pixel art lovers</sub>
 
-## 测试
-
-```bash
-# 运行所有单元测试
-pytest -v
-
-# 仅运行端到端测试（需要真实 Aseprite）
-pytest -v -m e2e
-
-# 运行所有测试（含端到端）
-pytest -v -m "e2e or not e2e"
-```
-
-## Lua 脚本独立调试
-
-每个 Lua 脚本可独立手动测试：
-
-```powershell
-$aseprite = "D:\cxdownload\game_develop\Aseprite-v1.3.17.2-Source\build\bin\aseprite.exe"
-
-# 创建 16x16 画布（注意：--script-param 必须在 --script 之前）
-& $aseprite -b --script-param width=16 --script-param height=16 --script-param color_mode=rgb --script-param file=test.ase --script scripts/create_sprite.lua
-
-# 画红色像素
-& $aseprite -b --script-param file=test.ase --script-param x=5 --script-param y=5 --script-param color=#FF0000 --script scripts/draw_pixel.lua
-
-# 导出 PNG
-& $aseprite -b --script-param file=test.ase --script-param output=test.png --script-param scale=4 --script scripts/export_png.lua
-```
-
-## 项目结构
-
-```
-Aseprite_mcp/
-├── server.py              # MCP 服务器入口
-├── src/
-│   ├── config.py          # 配置管理
-│   ├── session.py         # 会话管理
-│   ├── runner.py          # Aseprite 执行器
-│   ├── resources.py       # MCP Resources
-│   ├── prompts.py         # MCP Prompts
-│   └── tools/
-│       ├── utils.py       # 工具辅助函数
-│       ├── sprite_tools.py    # 精灵管理工具
-│       ├── draw_tools.py      # 绘制原语工具
-│       └── inspect_tools.py   # 检查与导出工具
-├── scripts/               # Aseprite Lua 脚本
-│   ├── create_sprite.lua
-│   ├── draw_pixel.lua
-│   ├── draw_line.lua
-│   ├── draw_rect.lua
-│   ├── draw_ellipse.lua
-│   ├── fill_region.lua
-│   ├── clear_region.lua
-│   ├── clear_canvas.lua
-│   ├── export_png.lua
-│   ├── get_pixel_color.lua
-│   ├── get_canvas_info.lua
-│   ├── open_sprite.lua
-│   └── save_sprite.lua
-├── tests/
-│   ├── conftest.py
-│   ├── test_config.py
-│   ├── test_session.py
-│   ├── test_runner.py
-│   ├── test_tools_utils.py
-│   ├── test_sprite_tools.py
-│   ├── test_draw_tools.py
-│   ├── test_inspect_tools.py
-│   ├── test_resources.py
-│   ├── test_prompts.py
-│   └── test_e2e.py
-├── docs/
-│   └── superpowers/
-│       ├── specs/
-│       │   └── 2026-07-21-aseprite-mcp-design.md
-│       └── plans/
-│           └── 2026-07-21-aseprite-mcp.md
-└── pyproject.toml
-```
-
-## 技术栈
-
-- **Python 3.10+**：主语言
-- **FastMCP**：MCP 服务器框架（官方 Python SDK）
-- **Aseprite v1.3.17.2**：像素艺术编辑器，通过 CLI + Lua 脚本自动化
-- **pytest**：测试框架
-
-## 未来扩展
-
-- 动画支持（多帧、帧持续时间、GIF 导出）
-- 图层管理（多图层、可见性、混合模式）
-- 调色板管理（自定义调色板、索引颜色模式）
-- 图块集（Tileset）支持
-- Web UI（HTTP 传输方式）
+</div>

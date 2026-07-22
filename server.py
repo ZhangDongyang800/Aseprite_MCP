@@ -17,7 +17,13 @@ from src.session import SessionManager
 from src.runner import AsepriteRunner
 from src.tools.sprite_tools import register_sprite_tools
 from src.tools.draw_tools import register_draw_tools
+from src.tools.advanced_draw_tools import register_advanced_draw_tools
 from src.tools.inspect_tools import register_inspect_tools
+from src.tools.animation_tools import register_animation_tools
+from src.tools.layer_tools import register_layer_tools
+from src.tools.palette_tools import register_palette_tools
+from src.tools.tag_tools import register_tag_tools
+from src.tools.transform_tools import register_transform_tools
 from src.resources import register_resources
 from src.prompts import register_prompts
 
@@ -49,7 +55,13 @@ def create_server() -> FastMCP:
     # 注册工具
     register_sprite_tools(mcp, session_manager, runner)
     register_draw_tools(mcp, session_manager, runner)
+    register_advanced_draw_tools(mcp, session_manager, runner)
     register_inspect_tools(mcp, session_manager, runner)
+    register_animation_tools(mcp, session_manager, runner)
+    register_layer_tools(mcp, session_manager, runner)
+    register_palette_tools(mcp, session_manager, runner)
+    register_tag_tools(mcp, session_manager, runner)
+    register_transform_tools(mcp, session_manager, runner)
 
     # 注册资源
     register_resources(mcp, session_manager)

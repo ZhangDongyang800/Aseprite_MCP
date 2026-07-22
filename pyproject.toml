@@ -1,0 +1,28 @@
+[project]
+name = "aseprite-mcp"
+version = "0.1.0"
+description = "MCP server for AI-driven pixel sprite creation in Aseprite"
+requires-python = ">=3.10"
+dependencies = [
+    "fastmcp>=2.0.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0.0",
+    "pytest-asyncio>=0.23.0",
+]
+
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+where = ["."]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]
+markers = [
+    "e2e: end-to-end tests requiring real Aseprite installation",
+]

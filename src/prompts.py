@@ -201,6 +201,13 @@ def register_prompts(mcp):
   2. 调用 export_gif 导出 GIF 动画
   3. 调用 save_sprite 保存
 
+══════════════════════════════════════════
+理想调用次数（{frame_count} 帧，调用优化基准）：
+══════════════════════════════════════════
+  create_sprite(1) → draw_animation_frames(1) → apply_timing_preset(1)
+  → check_canvas_standards(1) → [pass]export_gif(1) = 5 次
+禁止：逐帧循环 draw_from_grid / 逐帧 set_frame_duration / 每步必 preview
+
 动画规范：
 - 每帧只做小幅修改（1-3像素位移），保持动作连贯
 - 先画关键帧（最极端姿势），再补中间帧
@@ -265,6 +272,56 @@ def register_prompts(mcp):
 
 第5步：保存
   调用 save_sprite 保存
+"""
+
+    @mcp.prompt
+    def create_tileset_prompt(
+        description: str, tile_size: str = "16x16", cols: int = 6, rows: int = 3
+    ) -> str:
+        """生成瓦片集创作引导消息。
+
+        Args:
+            description: 瓦片集描述（如"草地与泥土过渡瓦片"）
+            tile_size: 单块瓦片尺寸（如 16x16）
+            cols: 横向瓦片数
+            rows: 纵向瓦片数
+        """
+        return f"""请使用 Aseprite MCP 工具创建瓦片集：{description}
+
+参数：{tile_size} 瓦片，{cols}x{rows} 布局
+
+══════════════════════════════════════════
+专业 Tileset 工作流程（docs §8）：
+══════════════════════════════════════════
+
+第1步：创建瓦片画布
+  调用 create_tileset_canvas（tile_size={tile_size.split('x')[0]}, cols={cols}, rows={rows}）
+  网格自动设为瓦片尺寸，清晰看到每块边界，避免越界污染相邻瓦片。
+
+第2步：读取瓦片模板（可选参考）
+  调用 aseprite://tileset/templates 查看可用模板
+  调用 aseprite://tileset/templates/{{name}} 取具体 grid/colormap
+
+第3步：绘制瓦片
+  用 draw_from_grid 绘制单块瓦片（用 offset_x/offset_y 定位到瓦片格）
+  完整一套需：中心块、边缘块、角块、过渡瓦片、装饰块（docs §8.3）
+
+第4步：检查接缝（必须执行！）
+  调用 export_tiled_preview（repeat=2）导出 2x2 拼接预览
+  检查拼接处是否有可见接缝：
+  - 边缘像素是否与相邻瓦片匹配？
+  - 是否有 1 像素偏移？
+  有接缝 → 修正边缘像素 → 再次 export_tiled_preview 验证
+
+第5步：保存
+  调用 save_sprite 保存
+
+══════════════════════════════════════════
+理想调用次数（docs §8 工作流）：
+══════════════════════════════════════════
+  create_tileset_canvas(1) → draw_from_grid(N块) → export_tiled_preview(1)
+  → [修正] → export_tiled_preview(1) → save_sprite(1)
+禁止：逐像素绘制瓦片、跳过接缝检查
 """
 
 

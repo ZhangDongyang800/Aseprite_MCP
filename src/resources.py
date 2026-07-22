@@ -92,6 +92,46 @@ _PRESET_PALETTES = {
     },
 }
 
+# 动画帧时长预设（docs §7.2，duration_ms 为建议值）
+_TIMING_PRESETS = {
+    "idle": {
+        "type": "idle", "description": "待机呼吸",
+        "frame_count_range": [2, 4], "duration_ms": 400,
+    },
+    "walk": {
+        "type": "walk", "description": "行走循环",
+        "frame_count_range": [4, 6], "duration_ms": 125,
+    },
+    "run": {
+        "type": "run", "description": "跑步循环",
+        "frame_count_range": [6, 8], "duration_ms": 80,
+    },
+    "attack_windup": {
+        "type": "attack_windup", "description": "攻击蓄力",
+        "frame_count_range": [1, 2], "duration_ms": 70,
+    },
+    "attack_hit": {
+        "type": "attack_hit", "description": "攻击命中（保持更长）",
+        "frame_count_range": [1, 2], "duration_ms": 160,
+    },
+    "attack_recover": {
+        "type": "attack_recover", "description": "攻击恢复",
+        "frame_count_range": [1, 2], "duration_ms": 90,
+    },
+    "jump_start": {
+        "type": "jump_start", "description": "跳跃起跳",
+        "frame_count_range": [1, 2], "duration_ms": 70,
+    },
+    "jump_apex": {
+        "type": "jump_apex", "description": "跳跃顶点（保持）",
+        "frame_count_range": [1, 1], "duration_ms": 150,
+    },
+    "jump_land": {
+        "type": "jump_land", "description": "落地挤压",
+        "frame_count_range": [1, 2], "duration_ms": 100,
+    },
+}
+
 # Aseprite 支持的所有混合模式
 _BLEND_MODES = [
     "normal", "multiply", "screen", "overlay", "darken", "lighten",
@@ -235,6 +275,23 @@ def register_resources(mcp, session_manager: SessionManager):
         preset = _PRESET_PALETTES.get(name)
         if not preset:
             return json.dumps({"error": f"Preset not found: {name}"})
+        return json.dumps(preset)
+
+    @mcp.resource("aseprite://timing/presets")
+    def list_timing_presets() -> str:
+        """返回动画帧时长预设类型列表（docs §7.2）。"""
+        return json.dumps({"presets": list(_TIMING_PRESETS.keys())})
+
+    @mcp.resource("aseprite://timing/presets/{type}")
+    def get_timing_preset(type: str) -> str:
+        """返回指定动画类型的帧时长预设。
+
+        可用: idle, walk, run, attack_windup, attack_hit, attack_recover,
+              jump_start, jump_apex, jump_land
+        """
+        preset = _TIMING_PRESETS.get(type)
+        if not preset:
+            return json.dumps({"error": f"Timing preset not found: {type}"})
         return json.dumps(preset)
 
     @mcp.resource("aseprite://canvas/{session_id}/info")

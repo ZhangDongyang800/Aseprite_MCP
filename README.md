@@ -90,7 +90,7 @@ ASEPRITE_PATH = "C:\\Program Files\\Aseprite\\aseprite.exe"
 
 ##  她能做什么
 
-让 AI 像人类画师一样，在 Aseprite 里完整地创作像素画 —— 支持像素级绘制、多图层管理、动画帧编辑、调色板控制、动画标签、图像变换、画布预览的完整工作流，共计 **38 个工具**。
+让 AI 像人类画师一样，在 Aseprite 里完整地创作像素画 —— 支持像素级绘制、多图层管理、动画帧编辑、调色板控制、动画标签、图像变换、画布预览的完整工作流，共计 **48 个工具**。
 
 ###  像素级绘制
 
@@ -163,6 +163,36 @@ ASEPRITE_PATH = "C:\\Program Files\\Aseprite\\aseprite.exe"
 | `crop_sprite` | 裁剪精灵到指定区域 |
 | `invert_color` | 反相所有颜色 |
 | `replace_color` | 替换指定颜色 |
+
+###  调色板增强
+
+| 工具 | 说明 |
+|------|------|
+| `apply_preset_palette` | ★批量★ 应用内置预设调色板（db16/db32/aap64/nes/gameboy） |
+| `derive_shading_palette` | 从主色派生三阶配色（色相偏移，默认自动应用） |
+| `append_palette_colors` | ★批量★ 追加多个颜色到调色板 |
+
+###  动画辅助
+
+| 工具 | 说明 |
+|------|------|
+| `apply_timing_preset` | ★批量★ 按动画类型批量设置帧时长 |
+| `draw_animation_frames` | ★批量★ 一次绘制多帧动画 |
+| `export_onion_skin_preview` | 洋葱皮叠加预览（前后帧对比） |
+
+###  Tileset 工具集
+
+| 工具 | 说明 |
+|------|------|
+| `create_tileset_canvas` | 创建瓦片画布并设网格 |
+| `export_tiled_preview` | 平铺拼接预览（检查接缝） |
+
+###  质量检查
+
+| 工具 | 说明 |
+|------|------|
+| `export_silhouette` | 导出纯黑剪影（剪影测试） |
+| `check_canvas_standards` | 画布规范自动检查（尺寸/颜色/帧时长/像素） |
 
 ###  画布检查
 

@@ -89,7 +89,7 @@ After configuration, ask your AI tool to use Aseprite-related tools to start cre
 
 ##  What It Can Do
 
-Let AI create pixel art in Aseprite like a human artist — with a complete workflow supporting pixel-level drawing, multi-layer management, animation frame editing, palette control, animation tags, image transforms, and canvas preview. **38 tools** in total.
+Let AI create pixel art in Aseprite like a human artist — with a complete workflow supporting pixel-level drawing, multi-layer management, animation frame editing, palette control, animation tags, image transforms, and canvas preview. **48 tools** in total.
 
 ###  Pixel-Level Drawing
 
@@ -162,6 +162,36 @@ All drawing tools support `layer` and `frame` parameters, allowing drawing on a 
 | `crop_sprite` | Crop sprite to a specified region |
 | `invert_color` | Invert all colors |
 | `replace_color` | Replace a specific color |
+
+###  Palette Enhancements
+
+| Tool | Description |
+|------|-------------|
+| `apply_preset_palette` | ★Batch★ Apply a built-in preset palette (db16/db32/aap64/nes/gameboy) |
+| `derive_shading_palette` | Derive a three-step shading palette from a base color (with hue shift, auto-applied by default) |
+| `append_palette_colors` | ★Batch★ Append multiple colors to the palette |
+
+###  Animation Helpers
+
+| Tool | Description |
+|------|-------------|
+| `apply_timing_preset` | ★Batch★ Set frame durations in bulk by animation type |
+| `draw_animation_frames` | ★Batch★ Draw multiple animation frames in one call |
+| `export_onion_skin_preview` | Onion-skin overlay preview (compare adjacent frames) |
+
+###  Tileset Tools
+
+| Tool | Description |
+|------|-------------|
+| `create_tileset_canvas` | Create a tileset canvas and set up the grid |
+| `export_tiled_preview` | Tiled layout preview (seam check) |
+
+###  Quality Checks
+
+| Tool | Description |
+|------|-------------|
+| `export_silhouette` | Export a solid black silhouette (silhouette test) |
+| `check_canvas_standards` | Auto-check canvas standards (size / colors / frame duration / pixel art) |
 
 ###  Canvas Inspection
 

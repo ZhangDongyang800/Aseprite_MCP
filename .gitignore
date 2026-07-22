@@ -37,7 +37,10 @@ Thumbs.db
 
 # 日志文件
 .uploads/
-docs/
+# docs 目录内容默认忽略，但 specs 设计文档需纳入版本控制
+docs/*
+!docs/specs/
+!docs/specs/**
 *.log
 
 # 本地环境变量文件

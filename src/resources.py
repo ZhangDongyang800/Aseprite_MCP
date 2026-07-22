@@ -16,6 +16,80 @@ _DEFAULT_PALETTE = [
     "#29ADFF", "#83769C", "#FF77A8", "#FFCCAA",
 ]
 
+# 预设调色板库（docs §4.3，色值采用公开标准）
+_PRESET_PALETTES = {
+    "db16": {
+        "name": "db16",
+        "description": "DawnBringer 16 色，适合简单项目",
+        "colors": [
+            "#140C1C", "#442434", "#30346D", "#4E4A4E",
+            "#854C30", "#346524", "#D04648", "#757161",
+            "#597DCE", "#D27D2C", "#8595A1", "#6DAA2C",
+            "#DAD45E", "#6E2EC6", "#992D2E", "#5CCBAA",
+        ],
+    },
+    "db32": {
+        "name": "db32",
+        "description": "DawnBringer 32 色，最常用的平衡选择",
+        "colors": [
+            "#000000", "#222034", "#45283C", "#663931",
+            "#8F563B", "#DF7126", "#D9A066", "#EEC39A",
+            "#FBF236", "#99E550", "#6ABE30", "#37946E",
+            "#4B692F", "#524B24", "#323C39", "#3F3F74",
+            "#306082", "#5B6EE1", "#839973", "#6EE86E",
+            "#5AC54F", "#8AE5A4", "#C4CFA1", "#DFEFCA",
+            "#9E6E2E", "#B58B47", "#6E6056", "#AB5236",
+            "#B86F50", "#5E3023", "#8C3F2D", "#5C1122",
+        ],
+    },
+    "aap64": {
+        "name": "aap64",
+        "description": "AAP-64，现代像素艺术 64 色标准",
+        "colors": [
+            "#060608", "#101218", "#1B1F2A", "#2B2F3A",
+            "#3F434F", "#545965", "#6D7280", "#8A8F9D",
+            "#A7ADB9", "#C4CACE", "#E1E3E4", "#FFFFFF",
+            "#330000", "#660000", "#990000", "#CC0000",
+            "#FE0000", "#FE6600", "#FE9900", "#FECC00",
+            "#FFFF00", "#CCFF00", "#99FF00", "#66FF00",
+            "#33FF00", "#00FE00", "#00CC00", "#009900",
+            "#006600", "#003300", "#003366", "#006699",
+            "#0099CC", "#00CCFF", "#00FFFF", "#33CCFF",
+            "#6699FF", "#6633FF", "#6600CC", "#330099",
+            "#330066", "#660099", "#9933FF", "#9966FF",
+            "#CC99FF", "#FFCCFF", "#FF99CC", "#FF6699",
+            "#FF3366", "#FF0033", "#CC0066", "#990066",
+            "#663366", "#4D224D", "#3D2233", "#2D1122",
+            "#6D6D6D", "#999999", "#B3B3B3", "#CCCCCC",
+        ],
+    },
+    "nes": {
+        "name": "nes",
+        "description": "NES 主机调色板，复古 8-bit 风格",
+        "colors": [
+            "#7C7C7C", "#0000FC", "#0000BC", "#4428BC",
+            "#940084", "#A80020", "#A81000", "#881400",
+            "#503000", "#007800", "#006800", "#005800",
+            "#004058", "#000000", "#BCBCBC", "#0078F8",
+            "#0058F8", "#6844FC", "#D800CC", "#E40058",
+            "#F83800", "#E45C10", "#AC7C00", "#00B800",
+            "#00A800", "#00A844", "#008888", "#000000",
+            "#F8F8F8", "#3CBCFC", "#6888FC", "#9878F8",
+            "#F878F8", "#F85898", "#F87858", "#FCA044",
+            "#F8B800", "#B8F818", "#58D854", "#58F898",
+            "#00E8D8", "#787878", "#FCFCFC", "#A4E4FC",
+            "#B8B8F8", "#D8B8F8", "#F8B8F8", "#F8A4C0",
+            "#F0D0B0", "#FCE0A8", "#F8D878", "#D8F878",
+            "#B8F8B8", "#B8F8D8", "#00FCFC", "#F8D8F8",
+        ],
+    },
+    "gameboy": {
+        "name": "gameboy",
+        "description": "Game Boy 4 色绿色调色板，极简复古",
+        "colors": ["#0F380F", "#306230", "#8BAC0F", "#9BBC0F"],
+    },
+}
+
 # Aseprite 支持的所有混合模式
 _BLEND_MODES = [
     "normal", "multiply", "screen", "overlay", "darken", "lighten",
@@ -144,6 +218,22 @@ def register_resources(mcp, session_manager: SessionManager):
     def get_default_palette() -> str:
         """返回默认像素艺术调色板（16 色）。"""
         return json.dumps({"colors": _DEFAULT_PALETTE})
+
+    @mcp.resource("aseprite://palette/presets")
+    def list_palette_presets() -> str:
+        """返回可用的预设调色板名称列表（docs §4.3）。"""
+        return json.dumps({"presets": list(_PRESET_PALETTES.keys())})
+
+    @mcp.resource("aseprite://palette/presets/{name}")
+    def get_palette_preset(name: str) -> str:
+        """返回指定预设调色板的完整色值。
+
+        可用: db16, db32, aap64, nes, gameboy
+        """
+        preset = _PRESET_PALETTES.get(name)
+        if not preset:
+            return json.dumps({"error": f"Preset not found: {name}"})
+        return json.dumps(preset)
 
     @mcp.resource("aseprite://canvas/{session_id}/info")
     def get_canvas_info_resource(session_id: str) -> str:

@@ -221,10 +221,7 @@ ASEPRITE_PATH = "C:\\Program Files\\Aseprite\\aseprite.exe"
 
 > 使用 Aseprite MCP，生成像素艺术精灵表，展示一位银色盔甲的勇敢骑士，手持长剑，四方向行走循环（下、上、左、右），每方向 4 帧动画，32x32 大小，扁平色彩，透明背景。
 
-**素材：**
-- 16 帧行走动画 PNG（`demo/Knightling/chibi_knight_frame_*.png`）
-- 完整精灵表（`demo/Knightling/chibi_knight_spritesheet.png`）
-- Prompt 文件（`demo/Knightling/00-prompt`）
+
 
 ---
 

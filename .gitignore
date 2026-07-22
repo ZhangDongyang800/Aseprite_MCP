@@ -36,6 +36,8 @@ htmlcov/
 Thumbs.db
 
 # 日志文件
+.uploads/
+docs/
 *.log
 
 # 本地环境变量文件

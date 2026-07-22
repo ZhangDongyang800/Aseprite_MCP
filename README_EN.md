@@ -26,11 +26,73 @@ A Model Context Protocol (MCP) server that enables AI to create pixel art in Ase
 
 ##  Table of Contents
 
-- [ What It Can Do](#-what-it-can-do)
 - [ How to Use](#-how-to-use)
+- [ What It Can Do](#-what-it-can-do)
 - [ Demo](#-demo)
 - [ Contributing](#-contributing)
 - [ License](#-license)
+
+---
+
+##  How to Use
+
+### 1. Environment Setup
+
+Before configuring MCP, prepare your local development environment:
+
+| Dependency | Version | Download |
+|------------|---------|----------|
+| Python | 3.10+ | [python.org](https://www.python.org/downloads/) |
+| Aseprite | v1.3+ | [aseprite.org](https://aseprite.org/) (remember the install path) |
+
+### 2. MCP Server Setup
+
+```bash
+git clone https://github.com/ZhangDongyang800/Aseprite_MCP.git
+cd Aseprite_MCP
+pip install fastmcp
+```
+
+### 3. Client Configuration
+
+> [!IMPORTANT]
+> Replace the paths below with your actual local paths:
+> - Path to `server.py` in `args`
+> - `ASEPRITE_PATH` environment variable value
+> - `python` path in `command`
+
+**TRAE:**
+
+Open TRAE → Settings → MCP → Add MCP Server, paste:
+
+```json
+{
+  "mcpServers": {
+    "aseprite": {
+      "command": "python",
+      "args": ["C:\\path\\to\\Aseprite_MCP\\server.py"],
+      "env": {
+        "ASEPRITE_PATH": "C:\\Program Files\\Aseprite\\aseprite.exe"
+      }
+    }
+  }
+}
+```
+
+**Codex CLI:**
+
+Config file: `~/.codex/config.toml`
+
+```toml
+[mcp_servers.aseprite]
+command = "python"
+args = ["/path/to/Aseprite_MCP/server.py"]
+
+[mcp_servers.aseprite.env]
+ASEPRITE_PATH = "C:\\Program Files\\Aseprite\\aseprite.exe"
+```
+
+After configuration, ask your AI tool to use Aseprite-related tools to start creating.
 
 ---
 
@@ -140,68 +202,6 @@ AI Visual Analysis ← base64 PNG ← Image Object ← FastMCP ← export_png.lu
 
 ---
 
-##  How to Use
-
-### 1. Environment Setup
-
-Before configuring MCP, prepare your local development environment:
-
-| Dependency | Version | Download |
-|------------|---------|----------|
-| Python | 3.10+ | [python.org](https://www.python.org/downloads/) |
-| Aseprite | v1.3+ | [aseprite.org](https://aseprite.org/) (remember the install path) |
-
-### 2. MCP Server Setup
-
-```bash
-git clone https://github.com/ZhangDongyang800/Aseprite_MCP.git
-cd Aseprite_MCP
-pip install fastmcp
-```
-
-### 3. Client Configuration
-
-> [!IMPORTANT]
-> Replace the paths below with your actual local paths:
-> - Path to `server.py` in `args`
-> - `ASEPRITE_PATH` environment variable value
-> - `python` path in `command`
-
-**TRAE:**
-
-Open TRAE → Settings → MCP → Add MCP Server, paste:
-
-```json
-{
-  "mcpServers": {
-    "aseprite": {
-      "command": "python",
-      "args": ["C:\\path\\to\\Aseprite_MCP\\server.py"],
-      "env": {
-        "ASEPRITE_PATH": "C:\\Program Files\\Aseprite\\aseprite.exe"
-      }
-    }
-  }
-}
-```
-
-**Codex CLI:**
-
-Config file: `~/.codex/config.toml`
-
-```toml
-[mcp_servers.aseprite]
-command = "python"
-args = ["/path/to/Aseprite_MCP/server.py"]
-
-[mcp_servers.aseprite.env]
-ASEPRITE_PATH = "C:\\Program Files\\Aseprite\\aseprite.exe"
-```
-
-After configuration, ask your AI tool to use Aseprite-related tools to start creating.
-
----
-
 ##  Demo
 
 
@@ -210,9 +210,17 @@ After configuration, ask your AI tool to use Aseprite-related tools to start cre
 
 <div align="center">
 
-| Sprite Sheet | Preview |
-|--------------|---------|
-| ![](demo/Knightling/chibi_knight_spritesheet.png) | Four-direction walk cycle, 4 frames each |
+**Four-Direction Walk Animation**
+
+| ↓ Down | ↑ Up |
+|:---:|:---:|
+| ![](demo/Knightling/knight_walk_down.gif) | ![](demo/Knightling/knight_walk_up.gif) |
+| ← Left | → Right |
+| ![](demo/Knightling/knight_walk_left.gif) | ![](demo/Knightling/knight_walk_right.gif) |
+
+**Sprite Sheet**
+
+![](demo/Knightling/chibi_knight_spritesheet.png)
 
 </div>
 

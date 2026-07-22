@@ -27,11 +27,73 @@
 
 ##  目录
 
-- [ 她能做什么](#-她能做什么)
 - [ 她怎么使用](#-她怎么使用)
+- [ 她能做什么](#-她能做什么)
 - [ Demo](#-demo)
 - [ 欢迎你的参与以及贡献](#-欢迎你的参与以及贡献)
 - [ 开源协议](#-开源协议)
+
+---
+
+##  她怎么使用
+
+### 1. 环境准备
+
+在配置 MCP 之前，需要先准备本地开发环境：
+
+| 依赖 | 版本要求 | 下载 |
+|------|---------|------|
+| Python | 3.10+ | [python.org](https://www.python.org/downloads/) |
+| Aseprite | v1.3+ | [aseprite.org](https://aseprite.org/)（需记住安装路径） |
+
+### 2. MCP Server 搭建
+
+```bash
+git clone https://github.com/ZhangDongyang800/Aseprite_MCP.git
+cd Aseprite_MCP
+pip install fastmcp
+```
+
+### 3. 客户端配置
+
+> [!IMPORTANT]
+> 以下配置中的路径需替换为你本地的实际路径：
+> - `args` 中的 `server.py` 路径
+> - `ASEPRITE_PATH` 环境变量值
+> - `command` 中的 `python` 路径
+
+**TRAE：**
+
+打开 TRAE → 设置 → MCP → 添加 MCP Server，粘贴：
+
+```json
+{
+  "mcpServers": {
+    "aseprite": {
+      "command": "python",
+      "args": ["C:\\path\\to\\Aseprite_MCP\\server.py"],
+      "env": {
+        "ASEPRITE_PATH": "C:\\Program Files\\Aseprite\\aseprite.exe"
+      }
+    }
+  }
+}
+```
+
+**Codex CLI：**
+
+配置文件：`~/.codex/config.toml`
+
+```toml
+[mcp_servers.aseprite]
+command = "python"
+args = ["/path/to/Aseprite_MCP/server.py"]
+
+[mcp_servers.aseprite.env]
+ASEPRITE_PATH = "C:\\Program Files\\Aseprite\\aseprite.exe"
+```
+
+配置完成后，在 AI 工具中让 AI 使用 Aseprite 相关工具即可开始创作。
 
 ---
 
@@ -141,68 +203,6 @@ AI 视觉分析 ← base64 PNG ← Image 对象 ← FastMCP ← export_png.lua �
 
 ---
 
-##  她怎么使用
-
-### 1. 环境准备
-
-在配置 MCP 之前，需要先准备本地开发环境：
-
-| 依赖 | 版本要求 | 下载 |
-|------|---------|------|
-| Python | 3.10+ | [python.org](https://www.python.org/downloads/) |
-| Aseprite | v1.3+ | [aseprite.org](https://aseprite.org/)（需记住安装路径） |
-
-### 2. MCP Server 搭建
-
-```bash
-git clone https://github.com/ZhangDongyang800/Aseprite_MCP.git
-cd Aseprite_MCP
-pip install fastmcp
-```
-
-### 3. 客户端配置
-
-> [!IMPORTANT]
-> 以下配置中的路径需替换为你本地的实际路径：
-> - `args` 中的 `server.py` 路径
-> - `ASEPRITE_PATH` 环境变量值
-> - `command` 中的 `python` 路径
-
-**TRAE：**
-
-打开 TRAE → 设置 → MCP → 添加 MCP Server，粘贴：
-
-```json
-{
-  "mcpServers": {
-    "aseprite": {
-      "command": "python",
-      "args": ["C:\\path\\to\\Aseprite_MCP\\server.py"],
-      "env": {
-        "ASEPRITE_PATH": "C:\\Program Files\\Aseprite\\aseprite.exe"
-      }
-    }
-  }
-}
-```
-
-**Codex CLI：**
-
-配置文件：`~/.codex/config.toml`
-
-```toml
-[mcp_servers.aseprite]
-command = "python"
-args = ["/path/to/Aseprite_MCP/server.py"]
-
-[mcp_servers.aseprite.env]
-ASEPRITE_PATH = "C:\\Program Files\\Aseprite\\aseprite.exe"
-```
-
-配置完成后，在 AI 工具中让 AI 使用 Aseprite 相关工具即可开始创作。
-
----
-
 ## 🎮 Demo
 
 项目包含一个骑士行走动画示例，展示了 AI 如何通过 Aseprite MCP 创作完整的游戏素材。
@@ -211,9 +211,17 @@ ASEPRITE_PATH = "C:\\Program Files\\Aseprite\\aseprite.exe"
 
 <div align="center">
 
-| 精灵表 | 预览 |
-|--------|------|
-| ![](demo/Knightling/chibi_knight_spritesheet.png) | 四方向行走循环，每方向 4 帧 |
+**四方向行走动画**
+
+| ↓ 下 | ↑ 上 |
+|:---:|:---:|
+| ![](demo/Knightling/knight_walk_down.gif) | ![](demo/Knightling/knight_walk_up.gif) |
+| ← 左 | → 右 |
+| ![](demo/Knightling/knight_walk_left.gif) | ![](demo/Knightling/knight_walk_right.gif) |
+
+**精灵表**
+
+![](demo/Knightling/chibi_knight_spritesheet.png)
 
 </div>
 

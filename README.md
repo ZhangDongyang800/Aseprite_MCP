@@ -6,12 +6,15 @@
 
 一个 MCP（Model Context Protocol）服务器，让 AI 通过像素级绘制原语在 Aseprite 中创作像素画，读取画布截图并迭代修正，直到画出满意的作品。
 
-[![License](https://img.shields.io/github/license/ZhangDongyang800/Aseprite_MCP?style=flat-square&color=blue)](LICENSE)
+
 [![Python](https://img.shields.io/badge/Python-3.10%2B-3776AB?style=flat-square&logo=python&logoColor=white)](https://www.python.org/)
 [![FastMCP](https://img.shields.io/badge/FastMCP-2.0%2B-FF6B35?style=flat-square)](https://github.com/jlowin/fastmcp)
 [![Aseprite](https://img.shields.io/badge/Aseprite-v1.3%2B-7D9F37?style=flat-square)](https://aseprite.org/)
 [![Stars](https://img.shields.io/github/stars/ZhangDongyang800/Aseprite_MCP?style=flat-square&logo=github&color=yellow)](https://github.com/ZhangDongyang800/Aseprite_MCP/stargazers)
-[![Issues](https://img.shields.io/github/issues/ZhangDongyang800/Aseprite_MCP?style=flat-square&logo=github&color=red)](https://github.com/ZhangDongyang800/Aseprite_MCP/issues)
+
+<p align="center">
+  <a href="README_EN.md">🇺🇸 English</a>
+</p>
 
 </div>
 

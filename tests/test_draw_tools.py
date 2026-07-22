@@ -40,9 +40,14 @@ def test_draw_pixel_calls_correct_script(setup):
         session_id="s1", x=5, y=10, color="#FF0000"
     )
 
+    # _run_draw_script 默认会附加 layer='1' 和 frame='1'（1-based 图层与帧索引）
     runner.run_script.assert_called_once_with(
         "draw_pixel.lua",
-        {"file": str(Path("/tmp/canvas.ase")), "x": "5", "y": "10", "color": "#FF0000"},
+        {
+            "file": str(Path("/tmp/canvas.ase")),
+            "layer": "1", "frame": "1",
+            "x": "5", "y": "10", "color": "#FF0000",
+        },
     )
     assert result["success"] is True
 
@@ -65,10 +70,12 @@ def test_draw_line_calls_correct_script(setup):
         session_id="s1", x1=0, y1=0, x2=15, y2=15, color="#00FF00"
     )
 
+    # _run_draw_script 默认会附加 layer='1' 和 frame='1'（1-based 图层与帧索引）
     runner.run_script.assert_called_once_with(
         "draw_line.lua",
         {
             "file": str(Path("/tmp/canvas.ase")),
+            "layer": "1", "frame": "1",
             "x1": "0", "y1": "0", "x2": "15", "y2": "15",
             "color": "#00FF00",
         },
@@ -109,10 +116,12 @@ def test_draw_ellipse_calls_correct_script(setup):
         session_id="s1", cx=8, cy=8, rx=5, ry=5, color="#FF00FF"
     )
 
+    # _run_draw_script 默认会附加 layer='1' 和 frame='1'（1-based 图层与帧索引）
     runner.run_script.assert_called_once_with(
         "draw_ellipse.lua",
         {
             "file": str(Path("/tmp/canvas.ase")),
+            "layer": "1", "frame": "1",
             "cx": "8", "cy": "8", "rx": "5", "ry": "5",
             "color": "#FF00FF", "filled": "false",
         },
@@ -128,9 +137,14 @@ def test_fill_region_calls_correct_script(setup):
         session_id="s1", x=5, y=5, color="#FFFFFF"
     )
 
+    # _run_draw_script 默认会附加 layer='1' 和 frame='1'（1-based 图层与帧索引）
     runner.run_script.assert_called_once_with(
         "fill_region.lua",
-        {"file": str(Path("/tmp/canvas.ase")), "x": "5", "y": "5", "color": "#FFFFFF"},
+        {
+            "file": str(Path("/tmp/canvas.ase")),
+            "layer": "1", "frame": "1",
+            "x": "5", "y": "5", "color": "#FFFFFF",
+        },
     )
     assert result["success"] is True
 
@@ -143,10 +157,12 @@ def test_clear_region_calls_correct_script(setup):
         session_id="s1", x=0, y=0, width=5, height=5
     )
 
+    # _run_draw_script 默认会附加 layer='1' 和 frame='1'（1-based 图层与帧索引）
     runner.run_script.assert_called_once_with(
         "clear_region.lua",
         {
             "file": str(Path("/tmp/canvas.ase")),
+            "layer": "1", "frame": "1",
             "x": "0", "y": "0", "width": "5", "height": "5",
         },
     )
@@ -159,9 +175,10 @@ def test_clear_canvas_calls_correct_script(setup):
 
     result = tools["clear_canvas"](session_id="s1")
 
+    # _run_draw_script 默认会附加 layer='1' 和 frame='1'（1-based 图层与帧索引）
     runner.run_script.assert_called_once_with(
         "clear_canvas.lua",
-        {"file": str(Path("/tmp/canvas.ase"))},
+        {"file": str(Path("/tmp/canvas.ase")), "layer": "1", "frame": "1"},
     )
     assert result["success"] is True
 

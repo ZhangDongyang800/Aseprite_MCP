@@ -24,6 +24,9 @@ from src.tools.layer_tools import register_layer_tools
 from src.tools.palette_tools import register_palette_tools
 from src.tools.tag_tools import register_tag_tools
 from src.tools.transform_tools import register_transform_tools
+# Task 13: 新增工具模块导入
+from src.tools.tileset_tools import register_tileset_tools
+from src.tools.quality_tools import register_quality_tools
 from src.resources import register_resources
 from src.prompts import register_prompts
 
@@ -62,6 +65,9 @@ def create_server() -> FastMCP:
     register_palette_tools(mcp, session_manager, runner)
     register_tag_tools(mcp, session_manager, runner)
     register_transform_tools(mcp, session_manager, runner)
+    # Task 13: 注册新增工具模块
+    register_tileset_tools(mcp, session_manager, runner)
+    register_quality_tools(mcp, session_manager, runner)
 
     # 注册资源
     register_resources(mcp, session_manager)

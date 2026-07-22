@@ -132,6 +132,82 @@ _TIMING_PRESETS = {
     },
 }
 
+# 瓦片布局模板（docs §8.2/§8.3），grid/colormap 可直接传入 draw_from_grid
+_TILESET_TEMPLATES = {
+    "grass_dirt_16x16": {
+        "name": "grass_dirt_16x16",
+        "description": "草地+泥土瓦片（16x16，含中心/边缘块）",
+        "tile_size": 16,
+        "grid": (
+            "GGGGGGGGGGGGGGGG"
+            "/GGGGGGGGGGGGGGGG"
+            "/GGGGGGGGGGGGGGGG"
+            "/GGGGGGGGGGGGGGGG"
+            "/GGGGDDDDDDDDGGGG"
+            "/GGGGDDDDDDDDGGGG"
+            "/GGGGDDDDDDDDGGGG"
+            "/GGGGDDDDDDDDGGGG"
+            "/GGGGDDDDDDDDGGGG"
+            "/GGGGDDDDDDDDGGGG"
+            "/GGGGDDDDDDDDGGGG"
+            "/GGGGDDDDDDDDGGGG"
+            "/GGGGGGGGGGGGGGGG"
+            "/GGGGGGGGGGGGGGGG"
+            "/GGGGGGGGGGGGGGGG"
+            "/GGGGGGGGGGGGGGGG"
+        ),
+        "colormap": "G=#4A7C20,D=#8B5A2B,.=transparent",
+    },
+    "dungeon_16x16": {
+        "name": "dungeon_16x16",
+        "description": "地牢石墙瓦片（16x16）",
+        "tile_size": 16,
+        "grid": (
+            "SSSSSSSSSSSSSSSS"
+            "/S..............S"
+            "/S..............S"
+            "/S..............S"
+            "/S..............S"
+            "/S..............S"
+            "/S..............S"
+            "/S..............S"
+            "/S..............S"
+            "/S..............S"
+            "/S..............S"
+            "/S..............S"
+            "/S..............S"
+            "/S..............S"
+            "/S..............S"
+            "/SSSSSSSSSSSSSSSS"
+        ),
+        "colormap": "S=#5C5C5C,.=transparent",
+    },
+    "water_grass_16x16": {
+        "name": "water_grass_16x16",
+        "description": "水面+草地过渡瓦片（16x16）",
+        "tile_size": 16,
+        "grid": (
+            "WWWWWWWWWWWWWWWW"
+            "/WWWWWWWWWWWWWWWW"
+            "/WWWWWWWWWWWWWWWW"
+            "/WWWWWWWWWWWWWWWW"
+            "/WWWWWWWWWWWWWWWW"
+            "/WWWWWWGGGGGGGGGG"
+            "/WWWWWGGGGGGGGGGG"
+            "/WWWWGGGGGGGGGGGG"
+            "/WWWGGGGGGGGGGGGG"
+            "/WWGGGGGGGGGGGGGG"
+            "/WGGGGGGGGGGGGGGG"
+            "/GGGGGGGGGGGGGGGG"
+            "/GGGGGGGGGGGGGGGG"
+            "/GGGGGGGGGGGGGGGG"
+            "/GGGGGGGGGGGGGGGG"
+            "/GGGGGGGGGGGGGGGG"
+        ),
+        "colormap": "W=#2980B9,G=#4A7C20,.=transparent",
+    },
+}
+
 # Aseprite 支持的所有混合模式
 _BLEND_MODES = [
     "normal", "multiply", "screen", "overlay", "darken", "lighten",
@@ -338,3 +414,23 @@ def register_resources(mcp, session_manager: SessionManager):
         if not pattern:
             return json.dumps({"error": f"Pattern not found: {name}"})
         return json.dumps(pattern)
+
+    @mcp.resource("aseprite://tileset/templates")
+    def list_tileset_templates() -> str:
+        """返回可用的瓦片布局模板列表（docs §8.2）。"""
+        templates = {
+            name: {"description": t["description"], "tile_size": t["tile_size"]}
+            for name, t in _TILESET_TEMPLATES.items()
+        }
+        return json.dumps({"templates": templates})
+
+    @mcp.resource("aseprite://tileset/templates/{name}")
+    def get_tileset_template(name: str) -> str:
+        """返回指定瓦片模板的完整 grid/colormap（可直接传入 draw_from_grid）。
+
+        可用: grass_dirt_16x16, dungeon_16x16, water_grass_16x16
+        """
+        template = _TILESET_TEMPLATES.get(name)
+        if not template:
+            return json.dumps({"error": f"Template not found: {name}"})
+        return json.dumps(template)

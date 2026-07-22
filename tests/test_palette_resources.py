@@ -76,9 +76,9 @@ def test_get_palette_preset_db32(setup):
 
 
 def test_get_palette_preset_aap64(setup):
-    """测试 aap64 预设返回完整色值列表。
+    """测试 aap64 预设返回完整 64 色标准色值列表。
 
-    注：plan §4.3 中 aap64 实际提供 60 个色值（命名 aap64 但数据为 60 色）。
+    色值来源：lospec.com/palette-list/aap-64（Adigun Polack 设计的 64 色标准）。
     """
     resources, _ = setup
 
@@ -86,8 +86,8 @@ def test_get_palette_preset_aap64(setup):
 
     data = json.loads(result)
     assert data["name"] == "aap64"
-    # plan 中实际提供的色值数量为 60
-    assert len(data["colors"]) == 60
+    # AAP-64 标准为 64 色
+    assert len(data["colors"]) == 64
     # 校验色值格式
     assert all(c.startswith("#") and len(c) == 7 for c in data["colors"])
 

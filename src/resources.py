@@ -208,6 +208,32 @@ _TILESET_TEMPLATES = {
     },
 }
 
+# 规范检查规则文档（docs §2/§4/§5/§7，供 AI 按需读取）
+_STANDARDS = {
+    "size": {
+        "category": "size",
+        "rules": "尺寸应为 8/16/32/64 或 8 的倍数（docs §2.1）",
+        "allowed": [8, 16, 32, 64],
+        "modulo": 8,
+    },
+    "palette": {
+        "category": "palette",
+        "rules": "颜色数建议 4-32，每种主色需配阴影(×0.7)和高光(×1.3)（docs §4.1/§4.2）",
+        "min_colors": 4,
+        "max_colors": 32,
+    },
+    "timing": {
+        "category": "timing",
+        "rules": "不要用统一帧率，不同动作不同时长（docs §7.2）",
+    },
+    "pixel_art": {
+        "category": "pixel_art",
+        "rules": "禁止意外抗锯齿(半透明像素)；避免 jaggies(阶梯不均)；避免枕头阴影（docs §5）",
+        "machine_checkable": ["semi_transparent", "isolated_pixels"],
+        "visual_review": ["jaggies_shape", "pillow_shading"],
+    },
+}
+
 # Aseprite 支持的所有混合模式
 _BLEND_MODES = [
     "normal", "multiply", "screen", "overlay", "darken", "lighten",
@@ -434,3 +460,14 @@ def register_resources(mcp, session_manager: SessionManager):
         if not template:
             return json.dumps({"error": f"Template not found: {name}"})
         return json.dumps(template)
+
+    @mcp.resource("aseprite://standards/{category}")
+    def get_standards(category: str) -> str:
+        """返回指定类别的规范检查规则（docs §2/§4/§5/§7）。
+
+        可用: size, palette, timing, pixel_art
+        """
+        std = _STANDARDS.get(category)
+        if not std:
+            return json.dumps({"error": f"Standards category not found: {category}"})
+        return json.dumps(std)

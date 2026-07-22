@@ -70,26 +70,33 @@ def register_advanced_draw_tools(
         layer: int = 1,
         frame: int = 1,
     ) -> dict:
-        """从文本网格一次性绘制整幅像素图（推荐的高效绘制方式）。
+        """★推荐★ 绘制完整精灵或多像素图案时的首选工具！一次调用绘制整幅图。
 
         用一个字符串表示整个像素布局，每个字符映射一种颜色，
-        一次性绘制完成，无需逐像素调用 draw_pixel。
+        一次性绘制完成。比逐个调用 draw_rect/draw_pixel 快几十倍：
+        画一个 32x32 精灵只需 1 次调用（而非 800+ 次 draw_rect）。
+
+        使用方法：
+        1. 为每种颜色分配一个字符代号（如 K=黑色, R=红色, W=白色, .=透明）
+        2. 用这些字符组成网格字符串，/ 分隔每行
+        3. 调用本工具一次完成绘制
 
         Args:
             session_id: 会话 ID
             grid: 像素网格字符串，用 / 分隔行，每行每个字符代表一个像素。
                   例如 3x3 红底白心: "RRR/RWR/RRR"
+                  16x16 示例: ".....KKKKKK...../....KRRRRRRK..../...KRRWWWWRRK.../..."
             colormap: 颜色映射表，用 , 分隔的 字符=颜色 对。
-                      颜色用 #RRGGBB 格式，transparent 表示透明。
-                      例如: "R=#FF0000,W=#FFFFFF,.=transparent"
+                      颜色用 #RRGGBB 格式，transparent 表示透明（跳过不画）。
+                      例如: "K=#000000,R=#FF0000,W=#FFFFFF,.=transparent"
             offset_x: 绘制起始 x 坐标偏移（默认0）
             offset_y: 绘制起始 y 坐标偏移（默认0）
             layer: 目标图层索引（1-based，默认1）
             frame: 目标帧索引（1-based，默认1）
 
-        示例:
-            grid = "....BBBB...." / "..BBYYYYBB.." / "..BYYYYYYB.." / "...BBBBBB..."
-            colormap = "B=#8B4513,Y=#FFD700,.=transparent"
+        完整示例（16x16 蘑菇）:
+            grid = ".....KKKKKK...../....KRRRRRRK..../...KRRWWWWRRK.../...KRWWWWWWRK.../...KRRWWWWRRK.../....KRRRRRRK..../.....KKKKKK...../.....KSSSSK...../.....KSSSSK...../.....KKKKKK....."
+            colormap = "K=#000000,R=#E74C3C,W=#FFFFFF,S=#F5DEB3,.=transparent"
         """
         if not grid or not colormap:
             return {

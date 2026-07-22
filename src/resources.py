@@ -27,25 +27,29 @@ _BLEND_MODES = [
 # 动画方向
 _ANI_DIRS = ["forward", "reverse", "ping_pong", "ping_pong_reverse"]
 
-# 像素艺术绘制技巧参考
+# 像素艺术绘制技巧参考（基于专业游戏美术实践）
 _PIXEL_ART_TIPS = {
     "basic_rules": [
-        "使用有限调色板（4-8色），每种主色配阴影色和高光色",
+        "使用有限调色板（4-8色），每种主色配阴影色和高光色——这是专业像素艺术的核心约束",
         "轮廓统一使用最深色，通常为黑色 #000000",
         "像素之间不要留空隙，保持填充完整",
-        "斜线保持45度角，阶梯均匀避免锯齿",
+        "斜线保持45度角，阶梯均匀（如 1-2-2-1 排列），避免锯齿",
+        "线宽统一为1像素，不要出现2像素宽的线段",
+        "先规划整体布局再绘制，而不是边画边想",
     ],
     "shading": [
         "光源通常设在左上方，阴影画在右下方",
         "阴影色 = 主色 RGB 各分量乘以 0.7",
         "高光色 = 主色 RGB 各分量乘以 1.3（上限255）",
-        "阴影不要画太多，1-2像素宽即可",
+        "阴影不要画太多，1-2像素宽即可，避免枕头式阴影",
+        "不要只沿轮廓涂阴影——先想好光源方向，再确定阴影区域",
+        "使用色相偏移：暗部偏冷色（蓝/紫），亮部偏暖色（黄/橙）",
     ],
     "outline": [
-        "先画轮廓再填充内部颜色",
-        "轮廓要连续不断裂",
+        "轮廓要连续不断裂，线宽统一",
         "可用 add_outline 工具自动生成描边",
-        "内轮廓（在主体边缘内侧）用主色的暗化版本",
+        "内轮廓（主体边缘内侧）用主色的暗化版本，不要全用黑色",
+        "轮廓颜色可做色相偏移，比纯黑更有层次感",
     ],
     "symmetry": [
         "对称图形只画一半，用 mirror_half 镜像复制",
@@ -53,10 +57,18 @@ _PIXEL_ART_TIPS = {
         "position 参数设为画布宽度/2（如16x16画布 position=8）",
     ],
     "animation": [
+        "先画关键帧（最极端姿势），再补中间帧——这是专业动画的标准流程",
         "每帧只做小幅修改（1-3像素位移），保持动作连贯",
-        "先画关键帧（最极端姿势），再补中间帧",
         "行走循环：腿臂交替摆动，身体微微上下起伏",
         "闪烁效果：缩放或明暗交替变化",
+        "使用洋葱皮（onion skin）思路：参考前后帧确保动作连贯",
+    ],
+    "workflow": [
+        "专业流程：草图 → 线稿 → 平涂底色 → 阴影/高光 → 描边 → 导出",
+        "先用 draw_from_grid 一次性平涂所有底色和高光阴影",
+        "再用 add_outline 自动描边",
+        "最后用 draw_pixel 做少量像素级修正",
+        "每步都用 get_canvas_preview 检查效果",
     ],
 }
 
@@ -153,7 +165,7 @@ def register_resources(mcp, session_manager: SessionManager):
     def get_pixel_art_tips(category: str) -> str:
         """获取像素艺术绘制技巧。
 
-        可用分类: basic_rules, shading, outline, symmetry, animation
+        可用分类: basic_rules, shading, outline, symmetry, animation, workflow
         """
         tips = _PIXEL_ART_TIPS.get(category, [])
         return json.dumps({"category": category, "tips": tips})

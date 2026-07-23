@@ -1,6 +1,20 @@
 -- draw_ellipse.lua：画椭圆（空心或实心）
--- 参数: file, cx (中心 x), cy (中心 y), rx (x 半径), ry (y 半径), color, filled
+-- 参数: file (CLI 模式必需，Live 模式可省略), cx (中心 x), cy (中心 y), rx (x 半径), ry (y 半径), color, filled
 -- 调用: aseprite -b --script draw_ellipse.lua --script-param file=canvas.ase --script-param cx=8 --script-param cy=8 --script-param rx=5 --script-param ry=5 --script-param color=#FF0000 --script-param filled=true
+--
+-- Live 模式行为：
+--   - 优先使用 app.activeSprite（无需 file 参数）
+--   - 修改实时反映在 Aseprite UI 上
+-- CLI 模式行为：
+--   - 从 file 打开 sprite，修改后保存回 file
+
+-- 加载公共辅助模块（CLI 模式下需要，Live 模式下已被 main.lua 预加载）
+if not _G._mcp_common_loaded then
+    local script_dir = debug.getinfo(1, "S").source:match("@(.*[/\\])")
+    if script_dir then
+        pcall(dofile, script_dir .. "mcp_common.lua")
+    end
+end
 
 local file = app.params["file"]
 local cx = tonumber(app.params["cx"])
@@ -10,14 +24,20 @@ local ry = tonumber(app.params["ry"])
 local color_hex = app.params["color"]
 local filled = app.params["filled"] == "true"
 
-if not file or not cx or not cy or not rx or not ry or not color_hex then
-    print("ERROR: file, cx, cy, rx, ry, color are required")
+if not cx or not cy or not rx or not ry or not color_hex then
+    print("ERROR: cx, cy, rx, ry, color are required")
     return
 end
 
-local sprite = app.open(file)
+-- 获取 sprite：Live 模式用 activeSprite，CLI 模式用 app.open(file)
+local sprite
+if _G._mcp_get_sprite then
+    sprite = _G._mcp_get_sprite(file)
+else
+    sprite = file and app.open(file) or app.activeSprite
+end
 if not sprite then
-    print("ERROR: cannot open file: " .. file)
+    print("ERROR: no active sprite. Call create_sprite first, or provide file parameter.")
     return
 end
 
@@ -63,5 +83,12 @@ else
     end
 end
 
-sprite:saveAs(file)
+-- 保存：Live 模式跳过，CLI 模式保存
+if _G._mcp_maybe_save then
+    _G._mcp_maybe_save(sprite, file)
+else
+    if file and file ~= "" then
+        sprite:saveAs(file)
+    end
+end
 print("OK: drew ellipse at (" .. cx .. "," .. cy .. ") rx=" .. rx .. " ry=" .. ry .. " filled=" .. tostring(filled))

@@ -178,6 +178,19 @@ local function handle_request(message)
         return req_id .. "\tfalse\t\terror: cannot set app.params: " .. tostring(params_err)
     end
 
+    -- Live 模式标志：标记当前在 WebSocket 扩展环境中
+    -- mcp_common.lua 会读取这个标志来决定是否使用 app.activeSprite
+    _G._mcp_live_mode = true
+
+    -- 先加载公共辅助模块（提供 _mcp_get_sprite / _mcp_maybe_save 等函数）
+    -- 推导 common 脚本路径：与主脚本在同一目录
+    local common_path = script_path:gsub("[^/\\]+$", "mcp_common.lua")
+    local common_file = io.open(common_path, "r")
+    if common_file then
+        common_file:close()
+        pcall(dofile, common_path)
+    end
+
     -- 捕获 print 输出
     local captured = {}
     local old_print = _G.print

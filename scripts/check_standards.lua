@@ -1,15 +1,31 @@
 -- check_standards.lua：遍历画布返回规范检查报告（JSON）
--- 参数: file
+-- 参数: file (CLI 模式必需，Live 模式可省略)
 -- 检查: size(尺寸), color_count(颜色数), palette_consistency, timing(帧时长), pixel_art(半透明/孤立像素)
-local file = app.params["file"]
-if not file then
-    print('{"error": "file is required"}')
-    return
+--
+-- Live 模式行为：
+--   - 优先使用 app.activeSprite（无需 file 参数）
+-- CLI 模式行为：
+--   - 从 file 打开 sprite 进行检查
+
+-- 加载公共辅助模块（CLI 模式下需要，Live 模式下已被 main.lua 预加载）
+if not _G._mcp_common_loaded then
+    local script_dir = debug.getinfo(1, "S").source:match("@(.*[/\\])")
+    if script_dir then
+        pcall(dofile, script_dir .. "mcp_common.lua")
+    end
 end
 
-local sprite = app.open(file)
+local file = app.params["file"]
+
+-- 获取 sprite：Live 模式用 activeSprite，CLI 模式用 app.open(file)
+local sprite
+if _G._mcp_get_sprite then
+    sprite = _G._mcp_get_sprite(file)
+else
+    sprite = file and app.open(file) or app.activeSprite
+end
 if not sprite then
-    print('{"error": "cannot open file"}')
+    print('{"error": "no active sprite. Call create_sprite first, or provide file parameter."}')
     return
 end
 

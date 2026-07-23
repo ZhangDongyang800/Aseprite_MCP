@@ -1,6 +1,20 @@
 -- clear_region.lua：清除指定区域为透明
--- 参数: file, x, y, width, height
+-- 参数: file (CLI 模式必需，Live 模式可省略), x, y, width, height
 -- 调用: aseprite -b --script clear_region.lua --script-param file=canvas.ase --script-param x=0 --script-param y=0 --script-param width=5 --script-param height=5
+--
+-- Live 模式行为：
+--   - 优先使用 app.activeSprite（无需 file 参数）
+--   - 修改实时反映在 Aseprite UI 上
+-- CLI 模式行为：
+--   - 从 file 打开 sprite，修改后保存回 file
+
+-- 加载公共辅助模块（CLI 模式下需要，Live 模式下已被 main.lua 预加载）
+if not _G._mcp_common_loaded then
+    local script_dir = debug.getinfo(1, "S").source:match("@(.*[/\\])")
+    if script_dir then
+        pcall(dofile, script_dir .. "mcp_common.lua")
+    end
+end
 
 local file = app.params["file"]
 local x = tonumber(app.params["x"])
@@ -8,14 +22,20 @@ local y = tonumber(app.params["y"])
 local w = tonumber(app.params["width"])
 local h = tonumber(app.params["height"])
 
-if not file or not x or not y or not w or not h then
-    print("ERROR: file, x, y, width, height are required")
+if not x or not y or not w or not h then
+    print("ERROR: x, y, width, height are required")
     return
 end
 
-local sprite = app.open(file)
+-- 获取 sprite：Live 模式用 activeSprite，CLI 模式用 app.open(file)
+local sprite
+if _G._mcp_get_sprite then
+    sprite = _G._mcp_get_sprite(file)
+else
+    sprite = file and app.open(file) or app.activeSprite
+end
 if not sprite then
-    print("ERROR: cannot open file: " .. file)
+    print("ERROR: no active sprite. Call create_sprite first, or provide file parameter.")
     return
 end
 
@@ -45,5 +65,12 @@ for py = y, y + h - 1 do
     end
 end
 
-sprite:saveAs(file)
+-- 保存：Live 模式跳过，CLI 模式保存
+if _G._mcp_maybe_save then
+    _G._mcp_maybe_save(sprite, file)
+else
+    if file and file ~= "" then
+        sprite:saveAs(file)
+    end
+end
 print("OK: cleared region at (" .. x .. "," .. y .. ") " .. w .. "x" .. h)

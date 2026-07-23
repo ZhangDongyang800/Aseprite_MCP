@@ -1,19 +1,39 @@
 -- set_layer_properties.lua：设置图层属性
--- 参数: file, layer (名称或索引), name (可选), visible (可选 "true"/"false"),
+-- 参数: file (CLI 模式必需，Live 模式可省略), layer (名称或索引), name (可选), visible (可选 "true"/"false"),
 --       opacity (可选 0-255), blend_mode (可选字符串)
 -- 调用: aseprite -b --script set_layer_properties.lua --script-param file=canvas.ase --script-param layer=1 --script-param opacity=128
+--
+-- Live 模式行为：
+--   - 优先使用 app.activeSprite（无需 file 参数）
+--   - 修改实时反映在 Aseprite UI 上
+-- CLI 模式行为：
+--   - 从 file 打开 sprite，修改后保存回 file
+
+-- 加载公共辅助模块（CLI 模式下需要，Live 模式下已被 main.lua 预加载）
+if not _G._mcp_common_loaded then
+    local script_dir = debug.getinfo(1, "S").source:match("@(.*[/\\])")
+    if script_dir then
+        pcall(dofile, script_dir .. "mcp_common.lua")
+    end
+end
 
 local file = app.params["file"]
 local layer_param = app.params["layer"]
 
-if not file or not layer_param then
-    print("ERROR: file and layer are required")
+if not layer_param then
+    print("ERROR: layer is required")
     return
 end
 
-local sprite = app.open(file)
+-- 获取 sprite：Live 模式用 activeSprite，CLI 模式用 app.open(file)
+local sprite
+if _G._mcp_get_sprite then
+    sprite = _G._mcp_get_sprite(file)
+else
+    sprite = file and app.open(file) or app.activeSprite
+end
 if not sprite then
-    print("ERROR: cannot open file: " .. file)
+    print("ERROR: no active sprite. Call create_sprite first, or provide file parameter.")
     return
 end
 
@@ -80,5 +100,12 @@ if blend_mode and blend_mode ~= "" then
     end
 end
 
-sprite:saveAs(file)
+-- 保存：Live 模式跳过，CLI 模式保存
+if _G._mcp_maybe_save then
+    _G._mcp_maybe_save(sprite, file)
+else
+    if file and file ~= "" then
+        sprite:saveAs(file)
+    end
+end
 print("OK: updated layer properties for '" .. layer_param .. "'")

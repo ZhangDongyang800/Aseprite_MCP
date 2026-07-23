@@ -1,13 +1,29 @@
 -- create_tileset.lua：创建瓦片画布并设置网格为瓦片尺寸
--- 参数: file, tile_size, cols, rows
+-- 参数: file (CLI 模式必需，Live 模式可省略), tile_size, cols, rows
 -- 行为: 创建 tile_size*cols × tile_size*rows 画布，设网格=tile_size
+--
+-- Live 模式行为：
+--   - 创建新 sprite 并设为 activeSprite（无需 file 参数）
+--   - 修改实时反映在 Aseprite UI 上，不自动保存
+-- CLI 模式行为：
+--   - 创建新 sprite 并保存到 file 路径
+
+-- 加载公共辅助模块（CLI 模式下需要，Live 模式下已被 main.lua 预加载）
+if not _G._mcp_common_loaded then
+    local script_dir = debug.getinfo(1, "S").source:match("@(.*[/\\])")
+    if script_dir then
+        pcall(dofile, script_dir .. "mcp_common.lua")
+    end
+end
+
 local file = app.params["file"]
 local tile_size = tonumber(app.params["tile_size"])
 local cols = tonumber(app.params["cols"])
 local rows = tonumber(app.params["rows"])
 
-if not file or not tile_size or not cols or not rows then
-    print("ERROR: file, tile_size, cols, rows are required")
+-- 参数校验：tile_size、cols、rows 为必填，file 在 Live 模式下可省略
+if not tile_size or not cols or not rows then
+    print("ERROR: tile_size, cols, rows are required")
     return
 end
 
@@ -29,9 +45,16 @@ if app.gridBounds then
     grid_set = true
 end
 
-sprite:saveAs(file)
+-- 保存：Live 模式跳过，CLI 模式保存
+if _G._mcp_maybe_save then
+    _G._mcp_maybe_save(sprite, file)
+else
+    if file and file ~= "" then
+        sprite:saveAs(file)
+    end
+end
 if grid_set then
-    print("OK: created tileset " .. width .. "x" .. height .. " grid=" .. tile_size .. " at " .. file)
+    print("OK: created tileset " .. width .. "x" .. height .. " grid=" .. tile_size .. " at " .. (file or "(live mode)"))
 else
     -- 降级：网格未设置，提示瓦片尺寸
     print("OK: created tileset " .. width .. "x" .. height .. " (grid NOT set, tile_size=" .. tile_size .. ")")

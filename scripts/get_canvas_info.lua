@@ -1,18 +1,32 @@
 -- get_canvas_info.lua：获取画布元数据，输出 JSON 格式
--- 参数: file (会话 .ase 路径)
+-- 参数: file (CLI 模式必需，Live 模式可省略，会话 .ase 路径)
 -- 输出: JSON 字符串，包含 width, height, color_mode, frames
 -- 调用: aseprite -b --script get_canvas_info.lua --script-param file=canvas.ase
+--
+-- Live 模式行为：
+--   - 优先使用 app.activeSprite（无需 file 参数）
+-- CLI 模式行为：
+--   - 从 file 打开 sprite 读取信息
+
+-- 加载公共辅助模块（CLI 模式下需要，Live 模式下已被 main.lua 预加载）
+if not _G._mcp_common_loaded then
+    local script_dir = debug.getinfo(1, "S").source:match("@(.*[/\\])")
+    if script_dir then
+        pcall(dofile, script_dir .. "mcp_common.lua")
+    end
+end
 
 local file = app.params["file"]
 
-if not file then
-    print('{"error": "file is required"}')
-    return
+-- 获取 sprite：Live 模式用 activeSprite，CLI 模式用 app.open(file)
+local sprite
+if _G._mcp_get_sprite then
+    sprite = _G._mcp_get_sprite(file)
+else
+    sprite = file and app.open(file) or app.activeSprite
 end
-
-local sprite = app.open(file)
 if not sprite then
-    print('{"error": "cannot open file: ' .. file .. '"}')
+    print('{"error": "no active sprite. Call create_sprite first, or provide file parameter."}')
     return
 end
 

@@ -1,13 +1,29 @@
 -- draw_animation_frames.lua：一次绘制多帧动画
--- 参数: file, grids (用 | 分隔每帧，帧内行用 / 分隔), colormap, mode (copy/blank), layer
+-- 参数: file (CLI 模式必需，Live 模式可省略), grids (用 | 分隔每帧，帧内行用 / 分隔), colormap, mode (copy/blank), layer
+--
+-- Live 模式行为：
+--   - 优先使用 app.activeSprite（无需 file 参数）
+--   - 修改实时反映在 Aseprite UI 上，不自动保存
+-- CLI 模式行为：
+--   - 从 file 打开 sprite，修改后保存回 file
+
+-- 加载公共辅助模块（CLI 模式下需要，Live 模式下已被 main.lua 预加载）
+if not _G._mcp_common_loaded then
+    local script_dir = debug.getinfo(1, "S").source:match("@(.*[/\\])")
+    if script_dir then
+        pcall(dofile, script_dir .. "mcp_common.lua")
+    end
+end
+
 local file = app.params["file"]
 local grids_str = app.params["grids"]
 local colormap_str = app.params["colormap"]
 local mode = app.params["mode"] or "copy"
 local layer_idx = tonumber(app.params["layer"] or "1")
 
-if not file or not grids_str or not colormap_str then
-    print("ERROR: file, grids, colormap are required")
+-- 参数校验：grids、colormap 为必填，file 在 Live 模式下可省略
+if not grids_str or not colormap_str then
+    print("ERROR: grids, colormap are required")
     return
 end
 
@@ -27,9 +43,15 @@ for entry in colormap_str:gmatch("[^,]+") do
     end
 end
 
-local sprite = app.open(file)
+-- 获取 sprite：Live 模式用 activeSprite，CLI 模式用 app.open(file)
+local sprite
+if _G._mcp_get_sprite then
+    sprite = _G._mcp_get_sprite(file)
+else
+    sprite = file and app.open(file) or app.activeSprite
+end
 if not sprite then
-    print("ERROR: cannot open file: " .. file)
+    print("ERROR: no active sprite. Call create_sprite first, or provide file parameter.")
     return
 end
 
@@ -90,5 +112,12 @@ for fi = 1, #frames_grid do
     frames_drawn = frames_drawn + 1
 end
 
-sprite:saveAs(file)
+-- 保存：Live 模式跳过，CLI 模式保存
+if _G._mcp_maybe_save then
+    _G._mcp_maybe_save(sprite, file)
+else
+    if file and file ~= "" then
+        sprite:saveAs(file)
+    end
+end
 print("OK: drew " .. frames_drawn .. " frames")

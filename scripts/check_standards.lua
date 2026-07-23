@@ -19,7 +19,7 @@ local h = sprite.height
 -- 1. 尺寸检查（docs §2.1：尺寸应为 8 的倍数）
 local size_pass = (w % 8 == 0 and h % 8 == 0)
 local size_detail = w .. "x" .. h
-local size_suggestion = "尺寸应为 8 的倍数（docs §2.1）"
+local size_suggestion = "dimensions should be multiple of 8 (docs §2.1)"
 
 -- 2. 颜色数与半透明/孤立像素检查
 local color_set = {}
@@ -111,11 +111,11 @@ end
 local report = string.format(
     '{"success": true, "checks": {"size": %s, "color_count": %s, "timing": %s, "pixel_art": {"semi_transparent": %s, "isolated_pixels": %s, "visual_review": "%s"}}, "stats": {"width": %d, "height": %d, "color_count": %d, "frames": %d}}',
     check_item(size_pass, size_detail, size_suggestion),
-    check_item(color_count >= 4 and color_count <= 32, color_count .. " colors", "建议 4-32 色（docs §4.1）"),
-    check_item(timing_pass, timing_detail, "不同动作用不同时长（docs §7.2）"),
-    check_item(semi_transparent == 0, semi_transparent .. " semi-transparent pixels", "禁止半透明像素（docs §5.1）"),
-    check_item(isolated == 0, isolated .. " isolated pixels", "可能为 jaggies/噪点（docs §5.2）"),
-    "jaggies 形状/枕头阴影需 export_silhouette + get_canvas_preview 视觉复查（docs §5.2/§5.4）",
+    check_item(color_count >= 4 and color_count <= 32, color_count .. " colors", "use 4-32 colors (docs §4.1)"),
+    check_item(timing_pass, timing_detail, "vary duration per action (docs §7.2)"),
+    check_item(semi_transparent == 0, semi_transparent .. " semi-transparent pixels", "no semi-transparent pixels (docs §5.1)"),
+    check_item(isolated == 0, isolated .. " isolated pixels", "possible jaggies/noise (docs §5.2)"),
+    "review jaggies/pillow shading via export_silhouette + get_canvas_preview (docs §5.2/§5.4)",
     w, h, color_count, frame_total
 )
 

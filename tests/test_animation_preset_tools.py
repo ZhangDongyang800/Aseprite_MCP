@@ -30,11 +30,16 @@ def setup():
 
 
 def test_apply_timing_preset_calls_batch_script(setup):
-    """apply_timing_preset 应调用 set_frame_durations.lua（批量）。"""
+    """apply_timing_preset 应调用 set_frame_durations.lua（批量）。
+
+    mock 数据必须匹配 get_frame_info.lua 的真实返回格式：
+    {"frame_count": N, "frames": [{frame_number, duration}, ...]}
+    frames 是数组而非整数，frame_count 才是帧数。
+    """
     tools, sm, runner = setup
-    # get_frame_info 返回 4 帧用于构造 durations
+    # get_frame_info 返回真实格式：frame_count(整数) + frames(数组)
     runner.run_script.side_effect = [
-        {"success": True, "stdout": '{"frames": 4, "durations": [0.1,0.1,0.1,0.1]}', "stderr": ""},
+        {"success": True, "stdout": '{"frame_count": 4, "frames": [{"frame_number": 1, "duration": 0.1}, {"frame_number": 2, "duration": 0.1}, {"frame_number": 3, "duration": 0.1}, {"frame_number": 4, "duration": 0.1}]}', "stderr": ""},
         {"success": True, "stdout": "OK", "stderr": ""},
     ]
     result = tools["apply_timing_preset"](session_id="s1", animation_type="walk")
@@ -42,6 +47,9 @@ def test_apply_timing_preset_calls_batch_script(setup):
     # 第二次调用应是 set_frame_durations.lua
     last_call = runner.run_script.call_args_list[-1]
     assert last_call[0][0] == "set_frame_durations.lua"
+    # 验证 durations 参数是 4 个 125ms（walk 预设），逗号分隔
+    durations_param = last_call[0][1]["durations"]
+    assert durations_param == "125,125,125,125"
 
 
 def test_apply_timing_preset_rejects_unknown_type(setup):

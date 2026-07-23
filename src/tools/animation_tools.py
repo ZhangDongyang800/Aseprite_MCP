@@ -204,7 +204,8 @@ def register_animation_tools(mcp, session_manager: SessionManager, runner: Asepr
         })
         try:
             info = json.loads(info_result["stdout"].strip())
-            frame_total = info.get("frames", 0)
+            # get_frame_info.lua 返回 frame_count(整数) + frames(数组)，取 frame_count
+            frame_total = info.get("frame_count", 0)
         except (json.JSONDecodeError, KeyError):
             return {"success": False, "error": "Failed to get frame info"}
 

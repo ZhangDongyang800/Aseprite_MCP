@@ -52,11 +52,13 @@ class AsepriteRunner:
         cmd.extend(["--script", str(script_path)])
 
         try:
-            # 执行命令
+            # 执行命令（指定 UTF-8 编码，避免 Windows GBK 乱码导致 JSON 解析失败）
             result = subprocess.run(
                 cmd,
                 capture_output=True,
                 text=True,
+                encoding="utf-8",
+                errors="replace",
                 timeout=30,  # 30 秒超时
             )
 

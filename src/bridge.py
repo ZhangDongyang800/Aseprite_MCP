@@ -29,35 +29,44 @@ except ImportError:
 
 
 def params_to_lua(d: dict) -> str:
-    """将 Python dict 转换为 Lua table literal 字符串。
+    """将 Python dict 编码为 Aseprite 扩展可解析的键值对字符串。
 
-    支持的类型：bool、int、float、str。其他类型转为 str。
-    字符串值中的特殊字符（反斜杠、双引号、换行、制表符）会被转义。
+    协议：每对参数编码为 key=value，对之间用制表符 \t 分隔。
+    因为消息整体按 \t 分隔，所以 key 和 value 内部的 \t 需要先转义。
+    支持的类型：bool、int、float、str、None。其他类型转为 str。
 
     Args:
         d: 参数字典
 
     Returns:
-        Lua table literal，如 '{x = 10, y = 20, color = "#FF0000"}'
+        编码后的参数字符串，如 'x=10\ty=20\tcolor=#FF0000'
     """
     parts = []
     for k, v in d.items():
         if isinstance(v, bool):
-            parts.append(f"{k} = {'true' if v else 'false'}")
-        elif isinstance(v, int):
-            parts.append(f"{k} = {v}")
-        elif isinstance(v, float):
-            parts.append(f"{k} = {v}")
-        elif isinstance(v, str):
-            # 转义 Lua 字符串中的特殊字符
-            escaped = v.replace("\\", "\\\\").replace('"', '\\"').replace("\n", "\\n").replace("\t", "\\t")
-            parts.append(f'{k} = "{escaped}"')
+            value = "true" if v else "false"
         elif v is None:
-            parts.append(f"{k} = nil")
+            value = ""
         else:
-            escaped = str(v).replace("\\", "\\\\").replace('"', '\\"').replace("\n", "\\n").replace("\t", "\\t")
-            parts.append(f'{k} = "{escaped}"')
-    return "{" + ", ".join(parts) + "}"
+            value = str(v)
+
+        # 转义键和值中的特殊分隔符/转义符
+        # 转义规则（与 Lua 端一致）：
+        #   \  -> \\
+        #   \t -> \\t
+        #   \n -> \\n
+        #   \r -> \\r
+        #   =  -> \\=  (避免和 key=value 分隔符冲突)
+        def _escape(s: str) -> str:
+            s = s.replace("\\", "\\\\")
+            s = s.replace("\t", "\\t")
+            s = s.replace("\n", "\\n")
+            s = s.replace("\r", "\\r")
+            s = s.replace("=", "\\=")
+            return s
+
+        parts.append(f"{_escape(str(k))}={_escape(value)}")
+    return "\t".join(parts)
 
 
 def unescape_text(s: str) -> str:
@@ -274,9 +283,9 @@ class WebSocketBridge:
         with self._pending_lock:
             self._pending[req_id] = (event, result_box)
 
-        # 构造请求消息: <id>\t<script_name>\t<lua_table_literal>
-        lua_params = params_to_lua(params)
-        message = f"{req_id}\t{script_name}\t{lua_params}"
+        # 构造请求消息: <id>\t<script_name>\t<params_key=value_pairs>
+        encoded_params = params_to_lua(params)
+        message = f"{req_id}\t{script_name}\t{encoded_params}"
 
         # 在 WebSocket server 的事件循环中发送消息
         with self._client_lock:

@@ -1,9 +1,11 @@
 -- main.lua：Aseprite MCP Bridge 扩展入口
 -- 通过 WebSocket 连接到 Python MCP 服务器，实现 AI 对 Aseprite 的实时操作。
 --
--- 协议（基于文本行的 JSON-RPC 风格）：
---   请求（Python → Aseprite）: <id>\t<script_name>\t<lua_table_literal>
+-- 协议（基于文本行的键值对格式）：
+--   请求（Python → Aseprite）: <id>\t<script_name>\t<key1=value1>\t<key2=value2>...
 --   响应（Aseprite → Python）: <id>\t<success>\t<stdout_escaped>\t<stderr_escaped>
+--
+-- 注意：Aseprite Lua 环境没有 loadstring，因此不采用 Lua table literal。
 --
 -- 用法：
 --   1. 在 Aseprite 中安装本扩展（File > Scripts > Open Scripts Folder，或 Extensions 对话框）
@@ -60,60 +62,110 @@ local function set_script_params(params)
     return false, err
 end
 
--- 处理单条请求消息，返回响应字符串
-local function handle_request(message)
-    -- 按 \t 分割：id, script_name, lua_table_literal
-    local parts = {}
-    local start = 1
-    while true do
-        local sep = message:find("\t", start, true)
-        if not sep then
-            parts[#parts + 1] = message:sub(start)
-            break
-        end
-        parts[#parts + 1] = message:sub(start, sep - 1)
-        start = sep + 1
-        if #parts >= 2 then
-            -- 剩余部分作为 lua_table_literal（可能含空格，不分隔）
-            parts[#parts + 1] = message:sub(start)
-            break
+-- 反转义 Python 端转义的 key/value
+local function unescape_value(s)
+    s = s or ""
+    local result = {}
+    local i = 1
+    while i <= #s do
+        local c = s:sub(i, i)
+        if c == "\\" and i < #s then
+            local next_c = s:sub(i + 1, i + 1)
+            if next_c == "t" then
+                table.insert(result, "\t")
+            elseif next_c == "n" then
+                table.insert(result, "\n")
+            elseif next_c == "r" then
+                table.insert(result, "\r")
+            elseif next_c == "\\" then
+                table.insert(result, "\\")
+            elseif next_c == "=" then
+                table.insert(result, "=")
+            else
+                table.insert(result, c)
+                table.insert(result, next_c)
+            end
+            i = i + 2
+        else
+            table.insert(result, c)
+            i = i + 1
         end
     end
+    return table.concat(result)
+end
+
+-- 按 \t 分隔消息，同时处理转义序列（\t、\n、\r、\\、\=）
+local function split_message(message)
+    local parts = {}
+    local current = {}
+    local i = 1
+    while i <= #message do
+        local c = message:sub(i, i)
+        if c == "\\" and i < #message then
+            local next_c = message:sub(i + 1, i + 1)
+            if next_c == "t" then
+                table.insert(current, "\t")
+                i = i + 2
+            elseif next_c == "n" then
+                table.insert(current, "\n")
+                i = i + 2
+            elseif next_c == "r" then
+                table.insert(current, "\r")
+                i = i + 2
+            elseif next_c == "=" then
+                table.insert(current, "=")
+                i = i + 2
+            elseif next_c == "\\" then
+                table.insert(current, "\\")
+                i = i + 2
+            else
+                -- 不认识的转义，保留反斜杠
+                table.insert(current, c)
+                i = i + 1
+            end
+        elseif c == "\t" then
+            table.insert(parts, table.concat(current))
+            current = {}
+            i = i + 1
+        else
+            table.insert(current, c)
+            i = i + 1
+        end
+    end
+    table.insert(parts, table.concat(current))
+    return parts
+end
+
+-- 处理单条请求消息，返回响应字符串
+local function handle_request(message)
+    -- 按 \t 分割：id, script_name, [key1=value1, key2=value2, ...]
+    local parts = split_message(message)
 
     local req_id = parts[1]
     local script_name = parts[2]
-    local lua_literal = parts[3] or "{}"
 
     if not req_id or not script_name then
         return req_id and (req_id .. "\tfalse\t\terror: invalid request format") or "error\tfalse\t\tno request id"
     end
 
-    -- 解析 Lua table literal
-    local params
-    local ok, result = pcall(loadstring("return " .. lua_literal))
-    if ok and type(result) == "table" then
-        params = result
-    else
-        return req_id .. "\tfalse\t\terror: failed to parse params: " .. tostring(result)
+    -- 解析参数对 key=value
+    local params = {}
+    for i = 3, #parts do
+        local part = parts[i]
+        local eq_pos = part:find("=", 1, true)
+        if eq_pos then
+            local key = unescape_value(part:sub(1, eq_pos - 1))
+            local value = unescape_value(part:sub(eq_pos + 1))
+            params[key] = value
+        end
     end
 
     -- 查找脚本文件
-    -- 优先从 app.params 中获取 scripts_dir（由 Python 端在连接时设置）
-    -- 否则尝试常见路径
-    local scripts_dir = _G._mcp_scripts_dir
-    if not scripts_dir then
-        -- 尝试从环境变量获取
-        scripts_dir = os.getenv("ASEPRITE_SCRIPTS_DIR") or ""
-    end
-
-    local script_path
-    if scripts_dir and scripts_dir ~= "" then
-        script_path = scripts_dir .. "/" .. script_name
-    else
-        script_path = script_name
-    end
+    -- Python 端发送的是脚本文件的绝对路径，因此 script_name 即 script_path
+    local script_path = script_name
 
     -- 检查脚本是否存在
+    -- Aseprite 路径分隔符兼容：Windows 路径用反斜杠，但 Lua 字符串里不受影响
     local file = io.open(script_path, "r")
     if not file then
         return req_id .. "\tfalse\t\terror: script not found: " .. script_path

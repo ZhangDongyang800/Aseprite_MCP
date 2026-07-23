@@ -11,6 +11,10 @@ A Model Context Protocol (MCP) server that enables AI to create pixel art in Ase
 [![Aseprite](https://img.shields.io/badge/Aseprite-v1.3%2B-7D9F37?style=flat-square)](https://aseprite.org/)
 [![Stars](https://img.shields.io/github/stars/ZhangDongyang800/Aseprite_MCP?style=flat-square&logo=github&color=yellow)](https://github.com/ZhangDongyang800/Aseprite_MCP/stargazers)
 
+<p align="center">
+  <a href="README_CN.md">🇨🇳 简体中文</a>
+</p>
+
 </div>
 
 <br>
@@ -22,6 +26,17 @@ A Model Context Protocol (MCP) server that enables AI to create pixel art in Ase
 > - **CLI mode** (default): Each tool call spawns a headless Aseprite process (`aseprite -b`). No UI, state passed via `.ase` files.
 > - **Live mode** (WebSocket): AI operates the running Aseprite instance directly through a WebSocket bridge. UI is visible, state is persistent, and you can watch AI draw in real time. See [Live Mode Setup](#-live-mode-optional-websocket) below.
 
+
+---
+
+##  Table of Contents
+
+- [ How to Use](#-how-to-use)
+- [ Live Mode (Optional, WebSocket)](#-live-mode-optional-websocket)
+- [ What It Can Do](#-what-it-can-do)
+- [ Demo](#-demo)
+- [ Contributing](#-contributing)
+- [ License](#-license)
 
 ---
 

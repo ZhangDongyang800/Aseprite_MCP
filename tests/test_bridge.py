@@ -29,50 +29,56 @@ from src.runner import WebSocketRunner
 
 
 class TestParamsToLua:
-    """测试 Python dict → Lua table literal 转换。"""
+    """测试 Python dict → key=value 参数编码。"""
 
     def test_empty_dict(self):
-        assert params_to_lua({}) == "{}"
+        assert params_to_lua({}) == ""
 
     def test_int_values(self):
         result = params_to_lua({"x": 10, "y": 20})
-        assert "x = 10" in result
-        assert "y = 20" in result
+        assert "x=10" in result
+        assert "y=20" in result
 
     def test_string_values(self):
         result = params_to_lua({"color": "#FF0000", "file": "canvas.ase"})
-        assert 'color = "#FF0000"' in result
-        assert 'file = "canvas.ase"' in result
+        assert "color=#FF0000" in result
+        assert "file=canvas.ase" in result
 
     def test_bool_values(self):
         result = params_to_lua({"visible": True, "hidden": False})
-        assert "visible = true" in result
-        assert "hidden = false" in result
+        assert "visible=true" in result
+        assert "hidden=false" in result
 
     def test_float_values(self):
         result = params_to_lua({"scale": 1.5})
-        assert "scale = 1.5" in result
+        assert "scale=1.5" in result
 
     def test_none_values(self):
         result = params_to_lua({"optional": None})
-        assert "optional = nil" in result
+        assert "optional=" in result
 
-    def test_string_escaping(self):
-        """字符串中的特殊字符应被正确转义。"""
-        result = params_to_lua({"path": 'C:\\temp\\file.txt'})
-        assert 'path = "C:\\\\temp\\\\file.txt"' in result
+    def test_equals_in_value(self):
+        """值中的等号应被转义。"""
+        result = params_to_lua({"formula": "a=b+c"})
+        assert "formula=a\\=b+c" in result
 
-    def test_string_with_quotes(self):
-        result = params_to_lua({"name": 'hello "world"'})
-        assert 'name = "hello \\"world\\""' in result
+    def test_backslash_in_value(self):
+        """Windows 路径中的反斜杠应被转义。"""
+        result = params_to_lua({"path": "C:\\temp\\file.txt"})
+        assert "path=C:\\\\temp\\\\file.txt" in result
 
-    def test_string_with_newline(self):
+    def test_newline_in_value(self):
         result = params_to_lua({"text": "line1\nline2"})
-        assert 'text = "line1\\nline2"' in result
+        assert "text=line1\\nline2" in result
 
-    def test_string_with_tab(self):
+    def test_tab_in_value(self):
         result = params_to_lua({"text": "a\tb"})
-        assert 'text = "a\\tb"' in result
+        assert "text=a\\tb" in result
+
+    def test_key_with_special_chars(self):
+        """键名中的特殊字符也应被转义。"""
+        result = params_to_lua({"my=key": "value"})
+        assert "my\\=key=value" in result
 
 
 # ============================================================
@@ -134,6 +140,53 @@ def bridge_server():
     time.sleep(0.2)  # 等待端口释放
 
 
+def parse_params_from_request(message: str) -> dict:
+    """模拟 Aseprite 扩展解析参数对 key=value（\t 分隔，转义已处理）。"""
+    # 先拆分消息字段，同时处理转义序列（与 Lua split_message 行为一致）
+    parts = []
+    current = []
+    i = 0
+    while i < len(message):
+        c = message[i]
+        if c == "\\" and i + 1 < len(message):
+            next_c = message[i + 1]
+            if next_c == "t":
+                current.append("\t")
+                i += 2
+            elif next_c == "n":
+                current.append("\n")
+                i += 2
+            elif next_c == "r":
+                current.append("\r")
+                i += 2
+            elif next_c == "=":
+                current.append("=")
+                i += 2
+            elif next_c == "\\":
+                current.append("\\")
+                i += 2
+            else:
+                current.append(c)
+                i += 1
+        elif c == "\t":
+            parts.append("".join(current))
+            current = []
+            i += 1
+        else:
+            current.append(c)
+            i += 1
+    parts.append("".join(current))
+
+    params = {}
+    for part in parts[2:]:
+        eq_pos = part.find("=")
+        if eq_pos >= 0:
+            key = part[:eq_pos]
+            value = part[eq_pos + 1 :]
+            params[key] = value
+    return params
+
+
 @pytest.fixture
 def mock_aseprite_client(bridge_server):
     """模拟 Aseprite 扩展：连接到 bridge server，响应请求。
@@ -147,6 +200,7 @@ def mock_aseprite_client(bridge_server):
     import websockets
 
     received_messages = []
+    received_params = []
     stop_event = threading.Event()
 
     async def run_client():
@@ -163,8 +217,10 @@ def mock_aseprite_client(bridge_server):
                         break
 
                     received_messages.append(message)
+                    params = parse_params_from_request(message)
+                    received_params.append(params)
 
-                    # 解析请求: <id>\t<script_name>\t<lua_table_literal>
+                    # 解析请求: <id>\t<script_name>\t<key=value pairs>
                     parts = message.split("\t", 2)
                     req_id = parts[0]
                     script_name = parts[1]
@@ -194,7 +250,7 @@ def mock_aseprite_client(bridge_server):
     # 等待 client 连接到 server
     time.sleep(0.3)
 
-    yield received_messages
+    yield {"messages": received_messages, "params": received_params}
 
     # 优雅停止：设置停止信号，等待协程自然退出
     stop_event.set()
@@ -240,18 +296,22 @@ class TestWebSocketBridgeIntegration:
         assert "OK: executed draw_pixel.lua" in result["stdout"]
 
     def test_request_with_special_chars(self, bridge_server, mock_aseprite_client):
-        """参数含特殊字符（路径、引号）时能正确传输。"""
+        """参数含特殊字符（路径、等号）时能正确传输。"""
         time.sleep(0.5)
 
         result = bridge_server.send_request(
             "create_sprite.lua",
-            {"file": "C:\\temp\\canvas.ase", "name": 'test "quote"'},
+            {"file": "C:\\temp\\canvas.ase", "formula": "a=b+c"},
             timeout=3.0,
         )
 
         assert result["success"] is True
         # 验证 client 收到了消息
-        assert len(mock_aseprite_client) > 0
+        assert len(mock_aseprite_client["messages"]) > 0
+        # 验证参数正确解析
+        params = mock_aseprite_client["params"][-1]
+        assert params["file"] == "C:\\temp\\canvas.ase"
+        assert params["formula"] == "a=b+c"
 
 
 class TestWebSocketRunner:

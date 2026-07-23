@@ -1,6 +1,10 @@
 """Aseprite MCP 服务器入口。
 
 创建 FastMCP 实例，注册所有工具、资源和提示，启动服务器。
+
+支持两种执行模式（通过 ASEPRITE_MCP_MODE 环境变量切换）：
+- cli（默认）：通过 subprocess 调用 Aseprite CLI，无 UI、无状态持久
+- ws：通过 WebSocket 连接运行中的 Aseprite 实例，UI 可见、状态持久
 """
 
 import sys
@@ -14,7 +18,7 @@ from fastmcp import FastMCP
 
 from src.config import Config
 from src.session import SessionManager
-from src.runner import AsepriteRunner
+from src.runner import AsepriteRunner, WebSocketRunner
 from src.tools.sprite_tools import register_sprite_tools
 from src.tools.draw_tools import register_draw_tools
 from src.tools.advanced_draw_tools import register_advanced_draw_tools
@@ -40,14 +44,45 @@ def create_server() -> FastMCP:
     # 加载配置
     config = Config()
 
-    # 检查 Aseprite 是否存在
-    runner = AsepriteRunner(config)
+    # 根据模式创建 runner
+    if config.mode == "ws":
+        # WebSocket 模式：启动 WebSocket server，等待 Aseprite 扩展连接
+        from src.bridge import WebSocketBridge
+
+        bridge = WebSocketBridge(host=config.ws_host, port=config.ws_port)
+        if not bridge.start(timeout=5.0):
+            print(
+                f"ERROR: Failed to start WebSocket server on {config.ws_host}:{config.ws_port}",
+                file=sys.stderr,
+            )
+            print("Falling back to CLI mode.", file=sys.stderr)
+            runner = AsepriteRunner(config)
+        else:
+            runner = WebSocketRunner(bridge=bridge, config=config)
+            print(
+                f"[MCP] WebSocket mode enabled. Server: ws://{config.ws_host}:{config.ws_port}\n"
+                f"[MCP] Please install the Aseprite extension (in extension/ folder) and click\n"
+                f"[MCP] 'File > Scripts > MCP Bridge: Toggle Connection' in Aseprite to connect.",
+                file=sys.stderr,
+            )
+    else:
+        # CLI 模式（默认）
+        runner = AsepriteRunner(config)
+
+    # 检查 Aseprite 是否可用（CLI 模式检查路径，WS 模式检查连接）
     if not runner.check_aseprite_exists():
-        print(
-            f"WARNING: Aseprite not found at {config.aseprite_path}\n"
-            f"Set ASEPRITE_PATH environment variable to the correct path.",
-            file=sys.stderr,
-        )
+        if config.mode == "cli":
+            print(
+                f"WARNING: Aseprite not found at {config.aseprite_path}\n"
+                f"Set ASEPRITE_PATH environment variable to the correct path.",
+                file=sys.stderr,
+            )
+        else:
+            print(
+                "WARNING: Aseprite extension is not connected yet.\n"
+                "Please install the extension and click 'Toggle Connection' in Aseprite.",
+                file=sys.stderr,
+            )
 
     # 创建核心组件
     session_manager = SessionManager(config)

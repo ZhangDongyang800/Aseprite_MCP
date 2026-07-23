@@ -1,0 +1,23 @@
+{
+  "name": "aseprite-mcp-bridge",
+  "displayName": "Aseprite MCP Bridge",
+  "description": "WebSocket bridge for real-time AI-driven Aseprite control. Connects Aseprite to the Aseprite MCP server so AI can operate the running Aseprite instance directly (visible UI, persistent state).",
+  "version": "1.0.0",
+  "author": "张东阳",
+  "license": "MIT",
+  "categories": ["Scripts"],
+  "contributes": {
+    "scripts": [
+      {
+        "path": "./main.lua",
+        "key": "mcp_bridge_toggle",
+        "title": "MCP Bridge: Toggle Connection"
+      },
+      {
+        "path": "./status.lua",
+        "key": "mcp_bridge_status",
+        "title": "MCP Bridge: Show Status"
+      }
+    ]
+  }
+}

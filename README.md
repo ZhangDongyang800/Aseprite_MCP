@@ -17,6 +17,10 @@ A Model Context Protocol (MCP) server that enables AI to create pixel art in Ase
 
 > [!IMPORTANT]
 > This project requires a local installation of [Aseprite](https://aseprite.org/) v1.3+. AI performs drawing via the MCP protocol by calling the Aseprite CLI + Lua scripts.
+>
+> Two execution modes are supported:
+> - **CLI mode** (default): Each tool call spawns a headless Aseprite process (`aseprite -b`). No UI, state passed via `.ase` files.
+> - **Live mode** (WebSocket): AI operates the running Aseprite instance directly through a WebSocket bridge. UI is visible, state is persistent, and you can watch AI draw in real time. See [Live Mode Setup](#-live-mode-optional-websocket) below.
 
 
 ---
@@ -37,8 +41,10 @@ Before configuring MCP, prepare your local development environment:
 ```bash
 git clone https://github.com/ZhangDongyang800/Aseprite_MCP.git
 cd Aseprite_MCP
-pip install fastmcp
+pip install -e .
 ```
+
+This installs `fastmcp` and `websockets` (the latter is required for optional [Live Mode](#-live-mode-optional-websocket)).
 
 ### 3. Client Configuration
 
@@ -80,6 +86,91 @@ ASEPRITE_PATH = "C:\\Program Files\\Aseprite\\aseprite.exe"
 ```
 
 After configuration, ask your AI tool to use Aseprite-related tools to start creating.
+
+---
+
+## 🎥 Live Mode (Optional, WebSocket)
+
+Live mode lets AI operate your **running Aseprite instance** directly — you can watch every stroke happen in real time on your screen, and the sprite state persists across tool calls (no repeated file open/save overhead).
+
+### How It Works
+
+```
+┌─────────┐    MCP (stdio)    ┌──────────────┐   WebSocket    ┌──────────────────┐
+│  AI/TRAE │ ───────────────► │ Python MCP   │ ─────────────► │ Aseprite Extension│
+│          │ ◄─────────────── │ Server       │ ◄──────────── │ (WebSocket client) │
+└─────────┘                   └──────────────┘                └──────┬───────────┘
+                                                                     │ Lua app.* API
+                                                                     ▼
+                                                              ┌──────────────┐
+                                                              │ Visible Aseprite │
+                                                              │ Sprite + UI      │
+                                                              └──────────────┘
+```
+
+The Python MCP server starts a WebSocket server on `127.0.0.1:9001`. The Aseprite extension connects to it as a client. Each MCP tool call is forwarded to Aseprite over WebSocket, executed via the existing Lua scripts, and the result is sent back.
+
+### Setup
+
+**1. Install the Aseprite extension**
+
+The extension is in the `extension/` folder of this repo. Install it via:
+
+- Open Aseprite → `File > Scripts > Open Scripts Folder`
+- Copy the entire `extension/` folder contents into the scripts folder (or use `Edit > Preferences > Extensions > Add Extension` and select the `extension/` folder)
+
+**2. Enable WebSocket mode in MCP config**
+
+Add `ASEPRITE_MCP_MODE=ws` to the `env` section of your MCP server config:
+
+```json
+{
+  "mcpServers": {
+    "aseprite": {
+      "command": "python",
+      "args": ["C:\\path\\to\\Aseprite_MCP\\server.py"],
+      "env": {
+        "ASEPRITE_PATH": "C:\\Program Files\\Aseprite\\aseprite.exe",
+        "ASEPRITE_MCP_MODE": "ws",
+        "ASEPRITE_WS_HOST": "127.0.0.1",
+        "ASEPRITE_WS_PORT": "9001"
+      }
+    }
+  }
+}
+```
+
+**3. Connect Aseprite**
+
+With the MCP server running, open Aseprite and click:
+
+`File > Scripts > MCP Bridge: Toggle Connection`
+
+You should see an alert: "MCP Bridge: Connected to ws://127.0.0.1:9001".
+
+Now AI can operate Aseprite directly — create a sprite, draw pixels, and you'll see it happen live.
+
+### CLI vs Live Mode Comparison
+
+| Aspect | CLI Mode (default) | Live Mode (WebSocket) |
+|--------|-------------------|----------------------|
+| UI visibility | Headless (`-b` flag) | Full UI, watch AI draw |
+| State persistence | Per-call (file-based) | Persistent across calls |
+| Startup overhead | New process per call | Single running instance |
+| Setup complexity | None | Install extension + connect |
+| Aseprite focus required | No | Yes (callbacks delayed when unfocused) |
+| Fallback | N/A | Auto-falls back to CLI if extension not connected |
+
+> [!TIP]
+> If the Aseprite extension is not connected, Live mode tools return a clear error message guiding you to connect. The existing CLI mode is always available as fallback by setting `ASEPRITE_MCP_MODE=cli` (or removing the variable).
+
+### Environment Variables
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `ASEPRITE_MCP_MODE` | `cli` | Execution mode: `cli` or `ws` |
+| `ASEPRITE_WS_HOST` | `127.0.0.1` | WebSocket server bind address |
+| `ASEPRITE_WS_PORT` | `9001` | WebSocket server port |
 
 ---
 
@@ -208,6 +299,8 @@ All drawing tools support `layer` and `frame` parameters, allowing drawing on a 
 <br>
 
 <div align="center">
+
+**CLI Mode Data Flow** (default)
 
 ```
 AI Request → MCP Tool Call → FastMCP (Python) → Aseprite CLI → Lua Script → .ase File

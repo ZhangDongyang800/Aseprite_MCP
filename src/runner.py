@@ -1,12 +1,18 @@
 """Aseprite 执行器模块。
 
-通过 subprocess 调用 Aseprite CLI，执行 Lua 脚本。
-每次调用都是独立的进程，通过 .ase 文件传递状态。
+提供两种执行模式：
+1. CLI 模式（AsepriteRunner）：通过 subprocess 调用 Aseprite CLI（aseprite -b --script），
+   每次调用是独立进程，通过 .ase 文件传递状态。
+2. WebSocket 模式（WebSocketRunner）：通过 WebSocket 向运行中的 Aseprite 扩展发送命令，
+   AI 直接操作用户可见的 Aseprite 实例，状态持久、UI 实时可见。
+
+两种模式的 run_script() 接口完全一致，工具层无需感知底层差异。
 """
 
 import subprocess
 from pathlib import Path
-from dataclasses import dataclass
+from dataclasses import dataclass, field
+from typing import Optional
 
 from src.config import Config
 
@@ -98,3 +104,64 @@ class AsepriteRunner:
             True 如果路径存在，False 否则
         """
         return Path(self.config.aseprite_path).exists()
+
+
+@dataclass
+class WebSocketRunner:
+    """WebSocket 模式执行器。
+
+    通过 WebSocketBridge 向运行中的 Aseprite 扩展发送脚本执行请求。
+    与 AsepriteRunner 接口完全一致，可无缝替换。
+
+    优势：
+    - AI 直接操作用户可见的 Aseprite 实例
+    - 状态持久（无需每次重新打开 .ase 文件）
+    - UI 实时可见（用户能看到 AI 在画）
+
+    限制：
+    - 需要用户手动安装扩展并点击"Toggle Connection"
+    - Aseprite 失焦时 WebSocket 回调可能延迟
+    """
+
+    bridge: object  # WebSocketBridge 实例
+    config: Config = None
+
+    def run_script(self, script_name: str, params: dict) -> dict:
+        """通过 WebSocket 向 Aseprite 发送脚本执行请求。
+
+        Args:
+            script_name: Lua 脚本文件名（如 "draw_pixel.lua"）
+            params: 脚本参数字典（所有值会在 Aseprite 端转为字符串）
+
+        Returns:
+            执行结果字典（与 AsepriteRunner.run_script 格式一致）：
+            - 成功: {"success": True, "stdout": "...", "stderr": "..."}
+            - 失败: {"success": False, "stdout": "...", "stderr": "...", "error": "..."}
+        """
+        # 构造完整脚本路径（Aseprite 扩展需要绝对路径来 dofile）
+        script_path = str(self.config.scripts_dir / script_name)
+
+        # 发送请求
+        result = self.bridge.send_request(script_path, params)
+
+        if not result["success"]:
+            return {
+                "success": False,
+                "stdout": result.get("stdout", ""),
+                "stderr": result.get("stderr", ""),
+                "error": result.get("error", "WebSocket request failed"),
+            }
+
+        return {
+            "success": True,
+            "stdout": result.get("stdout", ""),
+            "stderr": result.get("stderr", ""),
+        }
+
+    def check_aseprite_exists(self) -> bool:
+        """检查 Aseprite 扩展是否已连接。
+
+        Returns:
+            True 如果有 Aseprite client 连接，False 否则
+        """
+        return self.bridge.is_connected()

@@ -2,42 +2,37 @@
 
 # 🎨 Aseprite MCP Server
 
-**让 AI 在 Aseprite 中画出像素艺术**
+**Let AI draw pixel art in Aseprite**
 
-一个 MCP（Model Context Protocol）服务器，让 AI 通过像素级绘制原语在 Aseprite 中创作像素画，读取画布截图并迭代修正，直到画出满意的作品。
-
+A Model Context Protocol (MCP) server that enables AI to create pixel art in Aseprite through pixel-level drawing primitives, read canvas screenshots, and iterate until satisfied.
 
 [![Python](https://img.shields.io/badge/Python-3.10%2B-3776AB?style=flat-square&logo=python&logoColor=white)](https://www.python.org/)
 [![FastMCP](https://img.shields.io/badge/FastMCP-2.0%2B-FF6B35?style=flat-square)](https://github.com/jlowin/fastmcp)
 [![Aseprite](https://img.shields.io/badge/Aseprite-v1.3%2B-7D9F37?style=flat-square)](https://aseprite.org/)
 [![Stars](https://img.shields.io/github/stars/ZhangDongyang800/Aseprite_MCP?style=flat-square&logo=github&color=yellow)](https://github.com/ZhangDongyang800/Aseprite_MCP/stargazers)
 
-<p align="center">
-  <a href="README_EN.md">🇺🇸 English</a>
-</p>
-
 </div>
 
 <br>
 
 > [!IMPORTANT]
-> 本项目需要本地安装 [Aseprite](https://aseprite.org/) v1.3+，AI 通过 MCP 协议调用 Aseprite CLI + Lua 脚本完成绘制。
+> This project requires a local installation of [Aseprite](https://aseprite.org/) v1.3+. AI performs drawing via the MCP protocol by calling the Aseprite CLI + Lua scripts.
 
 
 ---
 
-##  她怎么使用
+##  How to Use
 
-### 1. 环境准备
+### 1. Environment Setup
 
-在配置 MCP 之前，需要先准备本地开发环境：
+Before configuring MCP, prepare your local development environment:
 
-| 依赖 | 版本要求 | 下载 |
-|------|---------|------|
+| Dependency | Version | Download |
+|------------|---------|----------|
 | Python | 3.10+ | [python.org](https://www.python.org/downloads/) |
-| Aseprite | v1.3+ | [aseprite.org](https://aseprite.org/)（需记住安装路径） |
+| Aseprite | v1.3+ | [aseprite.org](https://aseprite.org/) (remember the install path) |
 
-### 2. MCP Server 搭建
+### 2. MCP Server Setup
 
 ```bash
 git clone https://github.com/ZhangDongyang800/Aseprite_MCP.git
@@ -45,17 +40,17 @@ cd Aseprite_MCP
 pip install fastmcp
 ```
 
-### 3. 客户端配置
+### 3. Client Configuration
 
 > [!IMPORTANT]
-> 以下配置中的路径需替换为你本地的实际路径：
-> - `args` 中的 `server.py` 路径
-> - `ASEPRITE_PATH` 环境变量值
-> - `command` 中的 `python` 路径
+> Replace the paths below with your actual local paths:
+> - Path to `server.py` in `args`
+> - `ASEPRITE_PATH` environment variable value
+> - `python` path in `command`
 
-**TRAE：**
+**TRAE:**
 
-打开 TRAE → 设置 → MCP → 添加 MCP Server，粘贴：
+Open TRAE → Settings → MCP → Add MCP Server, paste:
 
 ```json
 {
@@ -71,9 +66,9 @@ pip install fastmcp
 }
 ```
 
-**Codex CLI：**
+**Codex CLI:**
 
-配置文件：`~/.codex/config.toml`
+Config file: `~/.codex/config.toml`
 
 ```toml
 [mcp_servers.aseprite]
@@ -84,188 +79,186 @@ args = ["/path/to/Aseprite_MCP/server.py"]
 ASEPRITE_PATH = "C:\\Program Files\\Aseprite\\aseprite.exe"
 ```
 
-配置完成后，在 AI 工具中让 AI 使用 Aseprite 相关工具即可开始创作。
+After configuration, ask your AI tool to use Aseprite-related tools to start creating.
 
 ---
 
-##  她能做什么
+##  What It Can Do
 
-让 AI 像人类画师一样，在 Aseprite 里完整地创作像素画 —— 支持像素级绘制、多图层管理、动画帧编辑、调色板控制、动画标签、图像变换、画布预览的完整工作流，共计 **48 个工具**。
+Let AI create pixel art in Aseprite like a human artist — with a complete workflow supporting pixel-level drawing, multi-layer management, animation frame editing, palette control, animation tags, image transforms, and canvas preview. **48 tools** in total.
 
-###  像素级绘制
+###  Pixel-Level Drawing
 
-所有绘制工具均支持 `layer` 和 `frame` 参数，可在指定图层和帧上绘制（默认第1图层第1帧）。
+All drawing tools support `layer` and `frame` parameters, allowing drawing on a specific layer and frame (default: layer 1, frame 1).
 
-| 工具 | 说明 |
-|------|------|
-| `draw_pixel` | 在指定坐标画一个像素 |
-| `draw_line` | 画一条直线 |
-| `draw_rect` | 画矩形（支持空心 / 实心） |
-| `draw_ellipse` | 画椭圆（支持空心 / 实心） |
-| `fill_region` | 油漆桶填充连通区域 |
-| `clear_region` | 清除指定区域为透明 |
-| `clear_canvas` | 清空整个画布 |
+| Tool | Description |
+|------|-------------|
+| `draw_pixel` | Draw a pixel at specified coordinates |
+| `draw_line` | Draw a straight line |
+| `draw_rect` | Draw a rectangle (outline / filled) |
+| `draw_ellipse` | Draw an ellipse (outline / filled) |
+| `fill_region` | Paint bucket fill a connected region |
+| `clear_region` | Clear a region to transparent |
+| `clear_canvas` | Clear the entire canvas |
 
-###  精灵管理
+###  Sprite Management
 
-| 工具 | 说明 |
-|------|------|
-| `create_sprite` | 创建新画布（支持 `rgb` / `grayscale` / `indexed` 模式） |
-| `open_sprite` | 打开已有的 `.ase` 或 `.png` 文件 |
-| `save_sprite` | 保存为 `.ase` / `.png` / `.gif` |
-| `close_session` | 关闭会话并清理临时资源 |
+| Tool | Description |
+|------|-------------|
+| `create_sprite` | Create a new canvas (supports `rgb` / `grayscale` / `indexed` modes) |
+| `open_sprite` | Open an existing `.ase` or `.png` file |
+| `save_sprite` | Save as `.ase` / `.png` / `.gif` |
+| `close_session` | Close the session and clean up temporary resources |
 
-###  动画与帧
+###  Animation & Frames
 
-| 工具 | 说明 |
-|------|------|
-| `add_frame` | 添加新帧（复制上一帧或创建空白帧） |
-| `remove_frame` | 删除指定帧 |
-| `set_frame_duration` | 设置帧持续时间（秒） |
-| `get_frame_info` | 获取所有帧信息（帧数、每帧时长） |
-| `export_gif` | 导出 GIF 动画（支持缩放） |
-| `export_sprite_sheet` | 导出精灵表（PNG + JSON 数据） |
+| Tool | Description |
+|------|-------------|
+| `add_frame` | Add a new frame (copy last or create empty) |
+| `remove_frame` | Remove a specific frame |
+| `set_frame_duration` | Set frame duration (seconds) |
+| `get_frame_info` | Get all frame info (count, duration per frame) |
+| `export_gif` | Export GIF animation (supports scaling) |
+| `export_sprite_sheet` | Export sprite sheet (PNG + JSON data) |
 
-###  图层管理
+###  Layer Management
 
-| 工具 | 说明 |
-|------|------|
-| `add_layer` | 创建新图层 |
-| `remove_layer` | 删除图层（按名称或索引） |
-| `set_layer_properties` | 设置图层属性（名称、可见性、不透明度、混合模式） |
-| `get_layer_info` | 获取所有图层信息 |
-| `move_cel` | 在图层/帧之间移动 cel |
+| Tool | Description |
+|------|-------------|
+| `add_layer` | Create a new layer |
+| `remove_layer` | Remove a layer (by name or index) |
+| `set_layer_properties` | Set layer properties (name, visibility, opacity, blend mode) |
+| `get_layer_info` | Get info for all layers |
+| `move_cel` | Move a cel between layers / frames |
 
-###  调色板
+###  Palette
 
-| 工具 | 说明 |
-|------|------|
-| `set_palette_color` | 设置调色板中指定索引的颜色 |
-| `get_palette` | 获取当前调色板所有颜色 |
-| `resize_palette` | 调整调色板大小（颜色数量） |
-| `load_palette` | 从文件加载调色板（`.gpl` / `.pal` / `.png`） |
+| Tool | Description |
+|------|-------------|
+| `set_palette_color` | Set the color at a specific palette index |
+| `get_palette` | Get all colors in the current palette |
+| `resize_palette` | Resize the palette (number of colors) |
+| `load_palette` | Load a palette from a file (`.gpl` / `.pal` / `.png`) |
 
-###  动画标签
+###  Animation Tags
 
-| 工具 | 说明 |
-|------|------|
-| `add_tag` | 创建动画标签（支持播放方向、循环次数） |
-| `remove_tag` | 按名称删除标签 |
-| `get_tags` | 获取所有标签信息 |
+| Tool | Description |
+|------|-------------|
+| `add_tag` | Create an animation tag (supports playback direction, loop count) |
+| `remove_tag` | Remove a tag by name |
+| `get_tags` | Get info for all tags |
 
-###  图像变换
+###  Image Transforms
 
-| 工具 | 说明 |
-|------|------|
-| `flip_canvas` | 翻转画布（水平 / 垂直） |
-| `resize_sprite` | 缩放精灵尺寸 |
-| `rotate_canvas` | 旋转画布（90° / 180° / 270°） |
-| `crop_sprite` | 裁剪精灵到指定区域 |
-| `invert_color` | 反相所有颜色 |
-| `replace_color` | 替换指定颜色 |
+| Tool | Description |
+|------|-------------|
+| `flip_canvas` | Flip canvas (horizontal / vertical) |
+| `resize_sprite` | Resize the sprite |
+| `rotate_canvas` | Rotate canvas (90° / 180° / 270°) |
+| `crop_sprite` | Crop sprite to a specified region |
+| `invert_color` | Invert all colors |
+| `replace_color` | Replace a specific color |
 
-###  调色板增强
+###  Palette Enhancements
 
-| 工具 | 说明 |
-|------|------|
-| `apply_preset_palette` | ★批量★ 应用内置预设调色板（db16/db32/aap64/nes/gameboy） |
-| `derive_shading_palette` | 从主色派生三阶配色（色相偏移，默认自动应用） |
-| `append_palette_colors` | ★批量★ 追加多个颜色到调色板 |
+| Tool | Description |
+|------|-------------|
+| `apply_preset_palette` | ★Batch★ Apply a built-in preset palette (db16/db32/aap64/nes/gameboy) |
+| `derive_shading_palette` | Derive a three-step shading palette from a base color (with hue shift, auto-applied by default) |
+| `append_palette_colors` | ★Batch★ Append multiple colors to the palette |
 
-###  动画辅助
+###  Animation Helpers
 
-| 工具 | 说明 |
-|------|------|
-| `apply_timing_preset` | ★批量★ 按动画类型批量设置帧时长 |
-| `draw_animation_frames` | ★批量★ 一次绘制多帧动画 |
-| `export_onion_skin_preview` | 洋葱皮叠加预览（前后帧对比） |
+| Tool | Description |
+|------|-------------|
+| `apply_timing_preset` | ★Batch★ Set frame durations in bulk by animation type |
+| `draw_animation_frames` | ★Batch★ Draw multiple animation frames in one call |
+| `export_onion_skin_preview` | Onion-skin overlay preview (compare adjacent frames) |
 
-###  Tileset 工具集
+###  Tileset Tools
 
-| 工具 | 说明 |
-|------|------|
-| `create_tileset_canvas` | 创建瓦片画布并设网格 |
-| `export_tiled_preview` | 平铺拼接预览（检查接缝） |
+| Tool | Description |
+|------|-------------|
+| `create_tileset_canvas` | Create a tileset canvas and set up the grid |
+| `export_tiled_preview` | Tiled layout preview (seam check) |
 
-###  质量检查
+###  Quality Checks
 
-| 工具 | 说明 |
-|------|------|
-| `export_silhouette` | 导出纯黑剪影（剪影测试） |
-| `check_canvas_standards` | 画布规范自动检查（尺寸/颜色/帧时长/像素） |
+| Tool | Description |
+|------|-------------|
+| `export_silhouette` | Export a solid black silhouette (silhouette test) |
+| `check_canvas_standards` | Auto-check canvas standards (size / colors / frame duration / pixel art) |
 
-###  画布检查
+###  Canvas Inspection
 
-| 工具 | 说明 |
-|------|------|
-| `get_canvas_preview` | 导出 PNG 图片供 AI 视觉分析（**核心迭代工具**） |
-| `get_canvas_info` | 获取画布元数据（尺寸、颜色模式等） |
-| `get_pixel_color` | 查询指定坐标像素的颜色值 |
+| Tool | Description |
+|------|-------------|
+| `get_canvas_preview` | Export a PNG for AI visual analysis (**core iteration tool**) |
+| `get_canvas_info` | Get canvas metadata (size, color mode, etc.) |
+| `get_pixel_color` | Query the color of a pixel at specified coordinates |
 
-###  其他能力
+###  Other Capabilities
 
-- **MCP Resources** — 会话列表、默认调色板、画布元数据、混合模式列表、动画方向列表
-- **MCP Prompts** — 精灵创作引导、迭代审查引导、动画创作引导、多图层工作流引导
+- **MCP Resources** — Session list, default palette, canvas metadata, blend mode list, animation direction list
+- **MCP Prompts** — Sprite creation guide, iteration review guide, animation creation guide, multi-layer workflow guide
 
 > [!TIP]
-> `get_canvas_preview` 是整个工作流的核心：AI 画完之后调用它"看"一眼画布，分析后决定是否修正，形成 **绘制 → 预览 → 分析 → 修正** 的闭环。
+> `get_canvas_preview` is the core of the workflow: after drawing, AI calls it to "see" the canvas, analyze it, and decide whether to fix it, forming a **draw → preview → analyze → fix** loop.
 
 <br>
 
 <div align="center">
 
 ```
-AI 请求 → MCP 工具调用 → FastMCP (Python) → Aseprite CLI → Lua 脚本 → .ase 文件
+AI Request → MCP Tool Call → FastMCP (Python) → Aseprite CLI → Lua Script → .ase File
                                                                     ↓
-AI 视觉分析 ← base64 PNG ← Image 对象 ← FastMCP ← export_png.lua ←─┘
+AI Visual Analysis ← base64 PNG ← Image Object ← FastMCP ← export_png.lua ←─┘
 ```
 
 </div>
 
 ---
 
-## 🎮 Demo
+##  Demo
 
-项目包含一个骑士行走动画示例，展示了 AI 如何通过 Aseprite MCP 创作完整的游戏素材。
 
-**示例：Chibi Knight Walk Cycle**
+
+**Example: Chibi Knight Walk Cycle**
 
 <div align="center">
 
-**四方向行走动画**
+**Four-Direction Walk Animation**
 
-| ↓ 下 | ↑ 上 |
+| ↓ Down | ↑ Up |
 |:---:|:---:|
 | ![](demo/Knightling/knight_walk_down.gif) | ![](demo/Knightling/knight_walk_up.gif) |
-| ← 左 | → 右 |
+| ← Left | → Right |
 | ![](demo/Knightling/knight_walk_left.gif) | ![](demo/Knightling/knight_walk_right.gif) |
 
-**精灵表**
+**Sprite Sheet**
 
 ![](demo/Knightling/chibi_knight_spritesheet.png)
 
 </div>
 
-**AI Prompt：**
+**AI Prompt:**
 
-> 使用 Aseprite MCP，生成像素艺术精灵表，展示一位银色盔甲的勇敢骑士，手持长剑，四方向行走循环（下、上、左、右），每方向 4 帧动画，32x32 大小，扁平色彩，透明背景。
-
-
-
----
-
-## 🤝 欢迎你的参与以及贡献
-
-欢迎提交 [Issue](https://github.com/ZhangDongyang800/Aseprite_MCP/issues) 和 [Pull Request](https://github.com/ZhangDongyang800/Aseprite_MCP/pulls)！
-
-我试用过了，但不能保证她真的很好用，她还需要更多的优化。
+> Use Aseprite MCP to generate a pixel art sprite sheet of a brave knight in silver armor holding a long sword. Four-direction walk cycle (down, up, left, right), 4 frames per direction, 32x32, flat colors, transparent background.
 
 
 ---
 
-##  开源协议
+## 🤝 Contributing
 
-本项目基于 [MIT License](LICENSE) 开源。
+Issues and Pull Requests are welcome!
+
+I've tried it, but I can't guarantee it works perfectly. It still needs more optimization.
+
+---
+
+##  License
+
+This project is open-sourced under the [MIT License](LICENSE).
 
 Copyright © 2026 [ZhangDongyang800](https://github.com/ZhangDongyang800)
 

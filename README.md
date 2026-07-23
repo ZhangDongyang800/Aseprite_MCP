@@ -191,7 +191,7 @@ Now AI can operate Aseprite directly — create a sprite, draw pixels, and you'l
 
 ##  What It Can Do
 
-Let AI create pixel art in Aseprite like a human artist — with a complete workflow supporting pixel-level drawing, multi-layer management, animation frame editing, palette control, animation tags, image transforms, and canvas preview. **48 tools** in total.
+Let AI create pixel art in Aseprite like a human artist — with a complete workflow supporting pixel-level drawing, multi-layer management, animation frame editing, palette control, animation tags, image transforms, and canvas preview. **49 tools** in total.
 
 ###  Pixel-Level Drawing
 
@@ -215,6 +215,7 @@ All drawing tools support `layer` and `frame` parameters, allowing drawing on a 
 | `open_sprite` | Open an existing `.ase` or `.png` file |
 | `save_sprite` | Save as `.ase` / `.png` / `.gif` |
 | `close_session` | Close the session and clean up temporary resources |
+| `import_png` | ★Recommended★ Import an image from a PNG file — the most token-efficient way to draw arbitrary shapes. Two modes: `new` (create a new session from the PNG, auto-reads real dimensions) / `stamp` (paste the PNG onto an existing session at a given layer/frame/offset). Recommended workflow: generate a PNG with Python/PIL, call `import_png(mode="new")`, then refine with `draw_pixel` / `draw_rect` etc. |
 
 ###  Animation & Frames
 
@@ -352,6 +353,34 @@ AI Visual Analysis ← base64 PNG ← Image Object ← FastMCP ← export_png.lu
 **AI Prompt:**
 
 > Use Aseprite MCP to generate a pixel art sprite sheet of a brave knight in silver armor holding a long sword. Four-direction walk cycle (down, up, left, right), 4 frames per direction, 32x32, flat colors, transparent background.
+
+---
+
+**Example: Import a PNG (Recommended Workflow for Arbitrary Shapes)**
+
+When drawing complex or non-grid-friendly shapes, generating a PNG with Python/PIL and importing it is far more token-efficient than describing every pixel with `draw_from_grid` or hundreds of `draw_pixel` calls.
+
+```python
+# Step 1: Generate a PNG with Python/PIL
+from PIL import Image, ImageDraw
+img = Image.new("RGBA", (32, 32), (0, 0, 0, 0))      # transparent background
+d = ImageDraw.Draw(img)
+d.ellipse([4, 4, 27, 27], fill=(231, 76, 60, 255))    # draw a red circle
+img.save("circle.png")
+```
+
+```python
+# Step 2: Import the PNG into a new Aseprite session
+import_png(png_path="circle.png", mode="new")
+# Returns: { "session_id": "...", "width": 32, "height": 32, ... }
+```
+
+```python
+# Step 3: Refine with pixel-level tools if needed
+draw_pixel(session_id="...", x=16, y=6, color="#FFFFFF")   # add a highlight
+```
+
+Use `mode="stamp"` to paste a PNG onto an existing session at a specific layer/frame/offset — handy for adding details, stamps, or compositing sub-images.
 
 
 ---

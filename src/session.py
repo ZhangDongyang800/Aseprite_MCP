@@ -101,6 +101,24 @@ class SessionManager:
             "color_mode": session["color_mode"],
         }
 
+    def update_canvas_info(
+        self, session_id: str, width: int, height: int
+    ) -> None:
+        """更新会话的画布尺寸缓存。
+
+        用于 import_png 等场景：从外部文件导入后，实际尺寸可能与
+        创建会话时的占位尺寸不同，需要用真实尺寸刷新缓存，
+        保证后续 get_canvas_info 返回正确值。
+
+        Args:
+            session_id: 会话 ID
+            width: 真实画布宽度（像素）
+            height: 真实画布高度（像素）
+        """
+        session = self._get_session(session_id)
+        session["width"] = width
+        session["height"] = height
+
     def close_session(self, session_id: str) -> None:
         """关闭会话，删除工作目录。
 

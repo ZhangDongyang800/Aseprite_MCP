@@ -59,6 +59,27 @@ def test_close_unknown_session_raises(session_manager):
         session_manager.close_session("nonexistent-id")
 
 
+def test_update_canvas_info_refreshes_size(session_manager):
+    """测试 update_canvas_info 用真实尺寸刷新会话缓存。"""
+    # 创建占位会话（16x16，模拟 import_png 前的占位）
+    session_id = session_manager.create_session(width=16, height=16)
+
+    # 导入 PNG 后用真实尺寸刷新
+    session_manager.update_canvas_info(session_id, width=32, height=24)
+
+    info = session_manager.get_canvas_info(session_id)
+    assert info["width"] == 32
+    assert info["height"] == 24
+    # color_mode 应保持不变
+    assert info["color_mode"] == "rgb"
+
+
+def test_update_canvas_info_unknown_session_raises(session_manager):
+    """测试更新不存在的会话抛出 KeyError。"""
+    with pytest.raises(KeyError, match="Session not found"):
+        session_manager.update_canvas_info("nonexistent-id", 32, 32)
+
+
 def test_list_sessions_returns_all_active(session_manager):
     """测试列出所有活跃会话。"""
     id1 = session_manager.create_session(width=16, height=16)

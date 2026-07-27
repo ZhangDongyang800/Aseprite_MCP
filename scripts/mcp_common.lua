@@ -105,3 +105,28 @@ _G._mcp_get_or_create_sprite = function(width, height, color_mode, file)
 
     return sprite, true
 end
+
+-- 解析十六进制颜色 #RRGGBB 为 r, g, b 值
+-- 参数: hex (#RRGGBB 格式字符串，如 "#FF0000")
+-- 返回: r, g, b 三个整数
+_G._mcp_hex_to_rgb = function(hex)
+    local r = tonumber(hex:sub(2, 3), 16)
+    local g = tonumber(hex:sub(4, 5), 16)
+    local b = tonumber(hex:sub(6, 7), 16)
+    return r, g, b
+end
+
+-- 获取指定图层/帧的 image，如果 cel 不存在则自动创建
+-- 参数: sprite, layer_idx (1-based), frame_idx (1-based)
+-- 返回: image 对象，或 nil + 错误信息
+_G._mcp_get_target_image = function(sprite, layer_idx, frame_idx)
+    local target_layer = sprite.layers[layer_idx]
+    if not target_layer then
+        return nil, "layer not found: " .. tostring(layer_idx)
+    end
+    local cel = target_layer:cel(frame_idx)
+    if not cel then
+        cel = sprite:newCel(target_layer, frame_idx)
+    end
+    return cel.image
+end

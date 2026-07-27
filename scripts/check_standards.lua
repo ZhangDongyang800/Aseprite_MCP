@@ -18,12 +18,7 @@ end
 local file = app.params["file"]
 
 -- 获取 sprite：Live 模式用 activeSprite，CLI 模式用 app.open(file)
-local sprite
-if _G._mcp_get_sprite then
-    sprite = _G._mcp_get_sprite(file)
-else
-    sprite = file and app.open(file) or app.activeSprite
-end
+local sprite = _G._mcp_get_sprite(file)
 if not sprite then
     print('{"error": "no active sprite. Call create_sprite first, or provide file parameter."}')
     return

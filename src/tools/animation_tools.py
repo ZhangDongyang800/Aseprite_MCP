@@ -4,15 +4,12 @@
 每个工具调用对应的 Lua 脚本，通过 Aseprite CLI 执行操作。
 """
 
-import json
-from pathlib import Path
-
 from fastmcp.utilities.types import Image
 
 from src.session import SessionManager
 from src.runner import AsepriteRunner
 from src.resources import _TIMING_PRESETS
-from src.tools.utils import validate_session_id
+from src.tools.utils import parse_json_output, run_script_with_file, validate_session_id
 
 
 def register_animation_tools(mcp, session_manager: SessionManager, runner: AsepriteRunner):
@@ -27,32 +24,11 @@ def register_animation_tools(mcp, session_manager: SessionManager, runner: Asepr
     def _run_anim_script(
         session_id: str, script_name: str, params: dict
     ) -> dict:
-        """执行动画脚本的公共逻辑。
-
-        Args:
-            session_id: 会话 ID
-            script_name: Lua 脚本名
-            params: 脚本参数（不含 file）
-
-        Returns:
-            执行结果字典
-        """
-        validate_session_id(session_id)
-        ase_path = session_manager.get_ase_path(session_id)
-
-        # 添加 file 参数
-        all_params = {"file": str(ase_path), **params}
-
-        result = runner.run_script(script_name, all_params)
-
-        if not result["success"]:
-            return {
-                "success": False,
-                "error": result.get("error", "Animation operation failed"),
-                "stderr": result.get("stderr", ""),
-            }
-
-        return {"success": True, "message": result.get("stdout", "").strip()}
+        """执行动画脚本（委托 utils.run_script_with_file）。"""
+        return run_script_with_file(
+            runner, session_manager, session_id, script_name, params,
+            error_label="Animation operation failed",
+        )
 
     @mcp.tool
     def add_frame(session_id: str, content: str = "copy") -> dict:
@@ -105,28 +81,11 @@ def register_animation_tools(mcp, session_manager: SessionManager, runner: Asepr
         """
         validate_session_id(session_id)
         ase_path = session_manager.get_ase_path(session_id)
-
-        result = runner.run_script("get_frame_info.lua", {
-            "file": str(ase_path),
-        })
-
-        if not result["success"]:
-            return {
-                "success": False,
-                "error": result.get("error", "Failed to get frame info"),
-            }
-
-        # 解析 Lua 脚本输出的 JSON
-        try:
-            data = json.loads(result["stdout"].strip())
-            if "error" in data:
-                return {"success": False, "error": data["error"]}
-            return {"success": True, **data}
-        except json.JSONDecodeError:
-            return {
-                "success": False,
-                "error": f"Failed to parse response: {result['stdout']}",
-            }
+        result = runner.run_script("get_frame_info.lua", {"file": str(ase_path)})
+        data, error = parse_json_output(result, "Failed to get frame info")
+        if error:
+            return error
+        return {"success": True, **data}
 
     @mcp.tool
     def export_gif(session_id: str, output_path: str, scale: int = 1) -> dict:
@@ -202,12 +161,11 @@ def register_animation_tools(mcp, session_manager: SessionManager, runner: Asepr
         info_result = runner.run_script("get_frame_info.lua", {
             "file": str(session_manager.get_ase_path(session_id)),
         })
-        try:
-            info = json.loads(info_result["stdout"].strip())
-            # get_frame_info.lua 返回 frame_count(整数) + frames(数组)，取 frame_count
-            frame_total = info.get("frame_count", 0)
-        except (json.JSONDecodeError, KeyError):
-            return {"success": False, "error": "Failed to get frame info"}
+        info, info_error = parse_json_output(info_result, "Failed to get frame info")
+        if info_error:
+            return info_error
+        # get_frame_info.lua 返回 frame_count(整数) + frames(数组)，取 frame_count
+        frame_total = info.get("frame_count", 0)
 
         if frame_total == 0:
             return {"success": False, "error": "No frames in canvas"}

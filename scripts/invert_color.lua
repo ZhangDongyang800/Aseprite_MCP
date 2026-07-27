@@ -19,12 +19,7 @@ end
 local file = app.params["file"]
 
 -- 获取 sprite：Live 模式用 activeSprite，CLI 模式用 app.open(file)
-local sprite
-if _G._mcp_get_sprite then
-    sprite = _G._mcp_get_sprite(file)
-else
-    sprite = file and app.open(file) or app.activeSprite
-end
+local sprite = _G._mcp_get_sprite(file)
 if not sprite then
     print("ERROR: no active sprite. Call create_sprite first, or provide file parameter.")
     return
@@ -37,11 +32,5 @@ app.activeSprite = sprite
 app.command.InvertColor()
 
 -- 保存：Live 模式跳过，CLI 模式保存
-if _G._mcp_maybe_save then
-    _G._mcp_maybe_save(sprite, file)
-else
-    if file and file ~= "" then
-        sprite:saveAs(file)
-    end
-end
+_mcp_maybe_save(sprite, file)
 print("OK: inverted colors")

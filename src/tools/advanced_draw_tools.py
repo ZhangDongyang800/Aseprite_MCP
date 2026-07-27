@@ -8,7 +8,9 @@
 
 from src.session import SessionManager
 from src.runner import AsepriteRunner
-from src.tools.utils import validate_color, validate_session_id
+from src.tools.utils import (
+    run_script_with_file, validate_color, validate_session_id,
+)
 
 
 def register_advanced_draw_tools(
@@ -21,44 +23,6 @@ def register_advanced_draw_tools(
         session_manager: 会话管理器
         runner: Aseprite 执行器
     """
-
-    def _run_advanced_script(
-        session_id: str, script_name: str, params: dict,
-        layer: int = 1, frame: int = 1,
-    ) -> dict:
-        """执行高级绘制脚本的公共逻辑。
-
-        Args:
-            session_id: 会话 ID
-            script_name: Lua 脚本名
-            params: 脚本参数（不含 file、layer、frame）
-            layer: 目标图层索引（1-based，默认1）
-            frame: 目标帧索引（1-based，默认1）
-
-        Returns:
-            执行结果字典
-        """
-        validate_session_id(session_id)
-        ase_path = session_manager.get_ase_path(session_id)
-
-        # 添加 file、layer、frame 参数
-        all_params = {
-            "file": str(ase_path),
-            "layer": str(layer),
-            "frame": str(frame),
-            **params,
-        }
-
-        result = runner.run_script(script_name, all_params)
-
-        if not result["success"]:
-            return {
-                "success": False,
-                "error": result.get("error", "Advanced draw operation failed"),
-                "stderr": result.get("stderr", ""),
-            }
-
-        return {"success": True, "message": result.get("stdout", "").strip()}
 
     @mcp.tool
     def draw_from_grid(
@@ -103,15 +67,15 @@ def register_advanced_draw_tools(
                 "success": False,
                 "error": "grid and colormap are required",
             }
-        return _run_advanced_script(
-            session_id, "draw_from_grid.lua",
+        return run_script_with_file(
+            runner, session_manager, session_id, "draw_from_grid.lua",
             {
                 "grid": grid,
                 "colormap": colormap,
                 "offset_x": str(offset_x),
                 "offset_y": str(offset_y),
             },
-            layer, frame,
+            layer=layer, frame=frame, error_label="Advanced draw operation failed",
         )
 
     @mcp.tool
@@ -143,7 +107,7 @@ def register_advanced_draw_tools(
         return _run_advanced_script(
             session_id, "add_outline.lua",
             {"color": color, "thickness": str(thickness)},
-            layer, frame,
+            layer=layer, frame=frame, error_label="Advanced draw operation failed",
         )
 
     @mcp.tool
@@ -188,12 +152,12 @@ def register_advanced_draw_tools(
                 "success": False,
                 "error": f"Invalid direction: {direction!r}. Must be one of {valid_dirs}",
             }
-        return _run_advanced_script(
-            session_id, "mirror_half.lua",
+        return run_script_with_file(
+            runner, session_manager, session_id, "mirror_half.lua",
             {
                 "axis": axis,
                 "position": str(position),
                 "direction": direction,
             },
-            layer, frame,
+            layer=layer, frame=frame, error_label="Advanced draw operation failed",
         )

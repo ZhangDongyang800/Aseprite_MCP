@@ -3,12 +3,10 @@
 每个工具调用对应的 Lua 脚本，通过 Aseprite CLI 执行调色板操作。
 """
 
-import json
-
 from src.session import SessionManager
 from src.runner import AsepriteRunner
 from src.resources import _PRESET_PALETTES
-from src.tools.utils import validate_color, validate_session_id
+from src.tools.utils import parse_json_output, run_script_with_file, validate_color, validate_session_id
 
 
 def register_palette_tools(mcp, session_manager: SessionManager, runner: AsepriteRunner):
@@ -23,32 +21,11 @@ def register_palette_tools(mcp, session_manager: SessionManager, runner: Aseprit
     def _run_palette_script(
         session_id: str, script_name: str, params: dict
     ) -> dict:
-        """执行调色板脚本的公共逻辑。
-
-        Args:
-            session_id: 会话 ID
-            script_name: Lua 脚本名
-            params: 脚本参数（不含 file）
-
-        Returns:
-            执行结果字典
-        """
-        validate_session_id(session_id)
-        ase_path = session_manager.get_ase_path(session_id)
-
-        # 添加 file 参数（会话 .ase 文件路径）
-        all_params = {"file": str(ase_path), **params}
-
-        result = runner.run_script(script_name, all_params)
-
-        if not result["success"]:
-            return {
-                "success": False,
-                "error": result.get("error", "Palette operation failed"),
-                "stderr": result.get("stderr", ""),
-            }
-
-        return {"success": True, "message": result.get("stdout", "").strip()}
+        """执行调色板脚本（委托 utils.run_script_with_file）。"""
+        return run_script_with_file(
+            runner, session_manager, session_id, script_name, params,
+            error_label="Palette operation failed",
+        )
 
     @mcp.tool
     def set_palette_color(session_id: str, index: int, color: str) -> dict:
@@ -74,29 +51,11 @@ def register_palette_tools(mcp, session_manager: SessionManager, runner: Aseprit
         """
         validate_session_id(session_id)
         ase_path = session_manager.get_ase_path(session_id)
-
-        result = runner.run_script("get_palette.lua", {
-            "file": str(ase_path),
-        })
-
-        if not result["success"]:
-            return {
-                "success": False,
-                "error": result.get("error", "Failed to get palette"),
-                "stderr": result.get("stderr", ""),
-            }
-
-        # 解析 Lua 脚本输出的 JSON
-        try:
-            data = json.loads(result["stdout"].strip())
-            if "error" in data:
-                return {"success": False, "error": data["error"]}
-            return {"success": True, **data}
-        except json.JSONDecodeError:
-            return {
-                "success": False,
-                "error": f"Failed to parse response: {result['stdout']}",
-            }
+        result = runner.run_script("get_palette.lua", {"file": str(ase_path)})
+        data, error = parse_json_output(result, "Failed to get palette")
+        if error:
+            return error
+        return {"success": True, **data}
 
     @mcp.tool
     def resize_palette(session_id: str, size: int) -> dict:

@@ -11,8 +11,7 @@
 
 import subprocess
 from pathlib import Path
-from dataclasses import dataclass, field
-from typing import Optional
+from dataclasses import dataclass
 
 from src.config import Config
 
@@ -124,7 +123,7 @@ class WebSocketRunner:
     """
 
     bridge: object  # WebSocketBridge 实例
-    config: Config = None
+    config: Config
 
     def run_script(self, script_name: str, params: dict) -> dict:
         """通过 WebSocket 向 Aseprite 发送脚本执行请求。
@@ -139,24 +138,9 @@ class WebSocketRunner:
             - 失败: {"success": False, "stdout": "...", "stderr": "...", "error": "..."}
         """
         # 构造完整脚本路径（Aseprite 扩展需要绝对路径来 dofile）
+        # bridge.send_request 已返回与 AsepriteRunner 一致的格式，直接透传
         script_path = str(self.config.scripts_dir / script_name)
-
-        # 发送请求
-        result = self.bridge.send_request(script_path, params)
-
-        if not result["success"]:
-            return {
-                "success": False,
-                "stdout": result.get("stdout", ""),
-                "stderr": result.get("stderr", ""),
-                "error": result.get("error", "WebSocket request failed"),
-            }
-
-        return {
-            "success": True,
-            "stdout": result.get("stdout", ""),
-            "stderr": result.get("stderr", ""),
-        }
+        return self.bridge.send_request(script_path, params)
 
     def check_aseprite_exists(self) -> bool:
         """检查 Aseprite 扩展是否已连接。

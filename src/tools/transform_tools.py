@@ -5,7 +5,7 @@
 
 from src.session import SessionManager
 from src.runner import AsepriteRunner
-from src.tools.utils import validate_color, validate_session_id
+from src.tools.utils import run_script_with_file, validate_color
 
 
 def register_transform_tools(mcp, session_manager: SessionManager, runner: AsepriteRunner):
@@ -20,32 +20,11 @@ def register_transform_tools(mcp, session_manager: SessionManager, runner: Asepr
     def _run_transform_script(
         session_id: str, script_name: str, params: dict
     ) -> dict:
-        """执行变换脚本的公共逻辑。
-
-        Args:
-            session_id: 会话 ID
-            script_name: Lua 脚本名
-            params: 脚本参数（不含 file）
-
-        Returns:
-            执行结果字典
-        """
-        validate_session_id(session_id)
-        ase_path = session_manager.get_ase_path(session_id)
-
-        # 添加 file 参数（Lua 脚本通过 app.params["file"] 读取）
-        all_params = {"file": str(ase_path), **params}
-
-        result = runner.run_script(script_name, all_params)
-
-        if not result["success"]:
-            return {
-                "success": False,
-                "error": result.get("error", "Transform operation failed"),
-                "stderr": result.get("stderr", ""),
-            }
-
-        return {"success": True, "message": result.get("stdout", "").strip()}
+        """执行变换脚本（委托 utils.run_script_with_file）。"""
+        return run_script_with_file(
+            runner, session_manager, session_id, script_name, params,
+            error_label="Transform operation failed",
+        )
 
     @mcp.tool
     def flip_canvas(session_id: str, direction: str = "horizontal") -> dict:

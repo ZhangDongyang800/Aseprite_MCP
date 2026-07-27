@@ -3,13 +3,11 @@
 补齐当前完全缺失的 Tileset 制作能力，专注瓦片画布创建与接缝自检。
 """
 
-from pathlib import Path
-
 from fastmcp.utilities.types import Image
 
 from src.session import SessionManager
 from src.runner import AsepriteRunner
-from src.tools.utils import validate_session_id
+from src.tools.utils import run_script_with_file, validate_session_id
 
 
 def register_tileset_tools(mcp, session_manager: SessionManager, runner: AsepriteRunner):
@@ -25,18 +23,11 @@ def register_tileset_tools(mcp, session_manager: SessionManager, runner: Aseprit
     _ALLOWED_TILE_SIZES = {16, 32, 64}
 
     def _run_tileset_script(session_id: str, script_name: str, params: dict) -> dict:
-        """执行 Tileset 脚本的公共逻辑。"""
-        validate_session_id(session_id)
-        ase_path = session_manager.get_ase_path(session_id)
-        all_params = {"file": str(ase_path), **params}
-        result = runner.run_script(script_name, all_params)
-        if not result["success"]:
-            return {
-                "success": False,
-                "error": result.get("error", "Tileset operation failed"),
-                "stderr": result.get("stderr", ""),
-            }
-        return {"success": True, "message": result.get("stdout", "").strip()}
+        """执行 Tileset 脚本（委托 utils.run_script_with_file）。"""
+        return run_script_with_file(
+            runner, session_manager, session_id, script_name, params,
+            error_label="Tileset operation failed",
+        )
 
     @mcp.tool
     def create_tileset_canvas(

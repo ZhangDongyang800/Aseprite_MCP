@@ -46,13 +46,7 @@ if app.gridBounds then
 end
 
 -- 保存：Live 模式跳过，CLI 模式保存
-if _G._mcp_maybe_save then
-    _G._mcp_maybe_save(sprite, file)
-else
-    if file and file ~= "" then
-        sprite:saveAs(file)
-    end
-end
+_mcp_maybe_save(sprite, file)
 if grid_set then
     print("OK: created tileset " .. width .. "x" .. height .. " grid=" .. tile_size .. " at " .. (file or "(live mode)"))
 else

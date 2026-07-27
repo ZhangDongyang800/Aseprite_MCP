@@ -5,7 +5,6 @@ get_canvas_preview 是核心工具：导出 PNG 并返回 Image 对象，
 """
 
 import json
-from pathlib import Path
 
 from fastmcp.utilities.types import Image
 

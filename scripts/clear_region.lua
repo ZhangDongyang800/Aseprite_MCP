@@ -28,12 +28,7 @@ if not x or not y or not w or not h then
 end
 
 -- 获取 sprite：Live 模式用 activeSprite，CLI 模式用 app.open(file)
-local sprite
-if _G._mcp_get_sprite then
-    sprite = _G._mcp_get_sprite(file)
-else
-    sprite = file and app.open(file) or app.activeSprite
-end
+local sprite = _G._mcp_get_sprite(file)
 if not sprite then
     print("ERROR: no active sprite. Call create_sprite first, or provide file parameter.")
     return
@@ -45,16 +40,11 @@ local transparent = app.pixelColor.rgba(0, 0, 0, 0)
 -- 支持指定图层和帧（默认第1图层第1帧）
 local layer_idx = tonumber(app.params["layer"] or "1")
 local frame_idx = tonumber(app.params["frame"] or "1")
-local target_layer = sprite.layers[layer_idx]
-if not target_layer then
-    print("ERROR: layer not found: " .. layer_idx)
+local image, layer_err = _mcp_get_target_image(sprite, layer_idx, frame_idx)
+if not image then
+    print("ERROR: " .. layer_err)
     return
 end
-local cel = target_layer:cel(frame_idx)
-if not cel then
-    cel = sprite:newCel(target_layer, frame_idx)
-end
-local image = cel.image
 
 -- 清除区域内的像素
 for py = y, y + h - 1 do
@@ -66,11 +56,5 @@ for py = y, y + h - 1 do
 end
 
 -- 保存：Live 模式跳过，CLI 模式保存
-if _G._mcp_maybe_save then
-    _G._mcp_maybe_save(sprite, file)
-else
-    if file and file ~= "" then
-        sprite:saveAs(file)
-    end
-end
+_mcp_maybe_save(sprite, file)
 print("OK: cleared region at (" .. x .. "," .. y .. ") " .. w .. "x" .. h)

@@ -32,11 +32,5 @@ if not sprite then
 end
 
 -- CLI 模式：另存为目标 .ase 文件；Live 模式：跳过（sprite 已打开并设为 active）
-if _G._mcp_maybe_save then
-    _G._mcp_maybe_save(sprite, dest)
-else
-    if dest and dest ~= "" then
-        sprite:saveAs(dest)
-    end
-end
+_mcp_maybe_save(sprite, dest)
 print("OK: opened " .. source .. (dest and (" and saved to " .. dest) or " (live mode)"))

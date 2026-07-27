@@ -69,12 +69,7 @@ elseif mode == "stamp" then
         return
     end
     -- 获取会话 sprite：Live 模式用 activeSprite，CLI 模式用 app.open(file)
-    local sprite
-    if _G._mcp_get_sprite then
-        sprite = _G._mcp_get_sprite(file)
-    else
-        sprite = app.open(file)
-    end
+    local sprite = _G._mcp_get_sprite(file)
     if not sprite then
         print('{"error": "no active sprite. Call create_sprite first, or provide file parameter."}')
         return
@@ -107,11 +102,7 @@ elseif mode == "stamp" then
     image:drawImage(png_cel.image, offset_x, offset_y)
 
     -- 保存会话 .ase：Live 模式跳过，CLI 模式保存
-    if _G._mcp_maybe_save then
-        _G._mcp_maybe_save(sprite, file)
-    else
-        sprite:saveAs(file)
-    end
+    _mcp_maybe_save(sprite, file)
     png_sprite:close()
     print(string.format(
         '{"ok": "stamped png onto layer %d frame %d at (%d,%d)"}',

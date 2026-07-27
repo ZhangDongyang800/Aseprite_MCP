@@ -41,6 +41,21 @@ def params_to_lua(d: dict) -> str:
     Returns:
         编码后的参数字符串，如 'x=10\ty=20\tcolor=#FF0000'
     """
+    # 转义键和值中的特殊分隔符/转义符
+    # 转义规则（与 Lua 端一致）：
+    #   \  -> \\
+    #   \t -> \\t
+    #   \n -> \\n
+    #   \r -> \\r
+    #   =  -> \\=  (避免和 key=value 分隔符冲突)
+    def _escape(s: str) -> str:
+        s = s.replace("\\", "\\\\")
+        s = s.replace("\t", "\\t")
+        s = s.replace("\n", "\\n")
+        s = s.replace("\r", "\\r")
+        s = s.replace("=", "\\=")
+        return s
+
     parts = []
     for k, v in d.items():
         if isinstance(v, bool):
@@ -49,21 +64,6 @@ def params_to_lua(d: dict) -> str:
             value = ""
         else:
             value = str(v)
-
-        # 转义键和值中的特殊分隔符/转义符
-        # 转义规则（与 Lua 端一致）：
-        #   \  -> \\
-        #   \t -> \\t
-        #   \n -> \\n
-        #   \r -> \\r
-        #   =  -> \\=  (避免和 key=value 分隔符冲突)
-        def _escape(s: str) -> str:
-            s = s.replace("\\", "\\\\")
-            s = s.replace("\t", "\\t")
-            s = s.replace("\n", "\\n")
-            s = s.replace("\r", "\\r")
-            s = s.replace("=", "\\=")
-            return s
 
         parts.append(f"{_escape(str(k))}={_escape(value)}")
     return "\t".join(parts)

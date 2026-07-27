@@ -4,12 +4,11 @@
 支持指定图层和帧，默认在第1图层第1帧绘制。
 """
 
-from pathlib import Path
-from typing import Optional
-
 from src.session import SessionManager
 from src.runner import AsepriteRunner
-from src.tools.utils import validate_color, validate_session_id
+from src.tools.utils import (
+    run_script_with_file, validate_color, validate_session_id,
+)
 
 
 def register_draw_tools(mcp, session_manager: SessionManager, runner: AsepriteRunner):
@@ -20,44 +19,6 @@ def register_draw_tools(mcp, session_manager: SessionManager, runner: AsepriteRu
         session_manager: 会话管理器
         runner: Aseprite 执行器
     """
-
-    def _run_draw_script(
-        session_id: str, script_name: str, params: dict,
-        layer: int = 1, frame: int = 1,
-    ) -> dict:
-        """执行绘制脚本的公共逻辑。
-
-        Args:
-            session_id: 会话 ID
-            script_name: Lua 脚本名
-            params: 脚本参数（不含 file、layer、frame）
-            layer: 目标图层索引（1-based，默认1）
-            frame: 目标帧索引（1-based，默认1）
-
-        Returns:
-            执行结果字典
-        """
-        validate_session_id(session_id)
-        ase_path = session_manager.get_ase_path(session_id)
-
-        # 添加 file、layer、frame 参数
-        all_params = {
-            "file": str(ase_path),
-            "layer": str(layer),
-            "frame": str(frame),
-            **params,
-        }
-
-        result = runner.run_script(script_name, all_params)
-
-        if not result["success"]:
-            return {
-                "success": False,
-                "error": result.get("error", "Draw operation failed"),
-                "stderr": result.get("stderr", ""),
-            }
-
-        return {"success": True, "message": result.get("stdout", "").strip()}
 
     @mcp.tool
     def draw_pixel(
@@ -80,7 +41,7 @@ def register_draw_tools(mcp, session_manager: SessionManager, runner: AsepriteRu
             frame: 目标帧索引（1-based，默认1）
         """
         color = validate_color(color)
-        return _run_draw_script(session_id, "draw_pixel.lua", {
+        return run_script_with_file(runner, session_manager, session_id, "draw_pixel.lua", {
             "x": str(x), "y": str(y), "color": color,
         }, layer, frame)
 
@@ -110,7 +71,7 @@ def register_draw_tools(mcp, session_manager: SessionManager, runner: AsepriteRu
             frame: 目标帧索引（1-based，默认1）
         """
         color = validate_color(color)
-        return _run_draw_script(session_id, "draw_line.lua", {
+        return run_script_with_file(runner, session_manager, session_id, "draw_line.lua", {
             "x1": str(x1), "y1": str(y1),
             "x2": str(x2), "y2": str(y2),
             "color": color,
@@ -145,7 +106,7 @@ def register_draw_tools(mcp, session_manager: SessionManager, runner: AsepriteRu
             frame: 目标帧索引（1-based，默认1）
         """
         color = validate_color(color)
-        return _run_draw_script(session_id, "draw_rect.lua", {
+        return run_script_with_file(runner, session_manager, session_id, "draw_rect.lua", {
             "x": str(x), "y": str(y),
             "width": str(width), "height": str(height),
             "color": color,
@@ -179,7 +140,7 @@ def register_draw_tools(mcp, session_manager: SessionManager, runner: AsepriteRu
             frame: 目标帧索引（1-based，默认1）
         """
         color = validate_color(color)
-        return _run_draw_script(session_id, "draw_ellipse.lua", {
+        return run_script_with_file(runner, session_manager, session_id, "draw_ellipse.lua", {
             "cx": str(cx), "cy": str(cy),
             "rx": str(rx), "ry": str(ry),
             "color": color,
@@ -202,7 +163,7 @@ def register_draw_tools(mcp, session_manager: SessionManager, runner: AsepriteRu
             frame: 目标帧索引（1-based，默认1）
         """
         color = validate_color(color)
-        return _run_draw_script(session_id, "fill_region.lua", {
+        return run_script_with_file(runner, session_manager, session_id, "fill_region.lua", {
             "x": str(x), "y": str(y), "color": color,
         }, layer, frame)
 
@@ -224,7 +185,7 @@ def register_draw_tools(mcp, session_manager: SessionManager, runner: AsepriteRu
             layer: 目标图层索引（1-based，默认1）
             frame: 目标帧索引（1-based，默认1）
         """
-        return _run_draw_script(session_id, "clear_region.lua", {
+        return run_script_with_file(runner, session_manager, session_id, "clear_region.lua", {
             "x": str(x), "y": str(y),
             "width": str(width), "height": str(height),
         }, layer, frame)
@@ -241,4 +202,4 @@ def register_draw_tools(mcp, session_manager: SessionManager, runner: AsepriteRu
             layer: 目标图层索引（1-based，默认1）
             frame: 目标帧索引（1-based，默认1）
         """
-        return _run_draw_script(session_id, "clear_canvas.lua", {}, layer, frame)
+        return run_script_with_file(runner, session_manager, session_id, "clear_canvas.lua", {}, layer, frame)

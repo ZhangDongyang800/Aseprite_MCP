@@ -31,12 +31,7 @@ if not source_layer_param or not source_frame or not dest_layer_param or not des
 end
 
 -- 获取 sprite：Live 模式用 activeSprite，CLI 模式用 app.open(file)
-local sprite
-if _G._mcp_get_sprite then
-    sprite = _G._mcp_get_sprite(file)
-else
-    sprite = file and app.open(file) or app.activeSprite
-end
+local sprite = _G._mcp_get_sprite(file)
 if not sprite then
     print("ERROR: no active sprite. Call create_sprite first, or provide file parameter.")
     return
@@ -89,12 +84,6 @@ sprite:newCel(dest_layer, dest_frame_obj, new_image, source_cel.position)
 sprite:deleteCel(source_cel)
 
 -- 保存：Live 模式跳过，CLI 模式保存
-if _G._mcp_maybe_save then
-    _G._mcp_maybe_save(sprite, file)
-else
-    if file and file ~= "" then
-        sprite:saveAs(file)
-    end
-end
+_mcp_maybe_save(sprite, file)
 print("OK: moved cel from layer '" .. source_layer_param .. "' frame " .. source_frame ..
       " to layer '" .. dest_layer_param .. "' frame " .. dest_frame)

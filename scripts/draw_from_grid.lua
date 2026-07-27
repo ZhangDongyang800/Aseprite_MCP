@@ -41,21 +41,14 @@ for entry in colormap_str:gmatch("[^,]+") do
             colormap[char] = nil
         else
             -- 解析十六进制颜色 #RRGGBB
-            local r = tonumber(color:sub(2, 3), 16)
-            local g = tonumber(color:sub(4, 5), 16)
-            local b = tonumber(color:sub(6, 7), 16)
+            local r, g, b = _mcp_hex_to_rgb(color)
             colormap[char] = app.pixelColor.rgba(r, g, b, 255)
         end
     end
 end
 
 -- 获取 sprite：Live 模式用 activeSprite，CLI 模式用 app.open(file)
-local sprite
-if _G._mcp_get_sprite then
-    sprite = _G._mcp_get_sprite(file)
-else
-    sprite = file and app.open(file) or app.activeSprite
-end
+local sprite = _G._mcp_get_sprite(file)
 if not sprite then
     print("ERROR: no active sprite. Call create_sprite first, or provide file parameter.")
     return
@@ -64,16 +57,11 @@ end
 -- 获取目标图层和帧
 local layer_idx = tonumber(app.params["layer"] or "1")
 local frame_idx = tonumber(app.params["frame"] or "1")
-local target_layer = sprite.layers[layer_idx]
-if not target_layer then
-    print("ERROR: layer not found: " .. layer_idx)
+local image, layer_err = _mcp_get_target_image(sprite, layer_idx, frame_idx)
+if not image then
+    print("ERROR: " .. layer_err)
     return
 end
-local cel = target_layer:cel(frame_idx)
-if not cel then
-    cel = sprite:newCel(target_layer, frame_idx)
-end
-local image = cel.image
 
 -- 解析网格并逐像素绘制
 local row_idx = 0
@@ -93,11 +81,5 @@ for row in grid_str:gmatch("[^/]+") do
 end
 
 -- 保存：Live 模式跳过，CLI 模式保存
-if _G._mcp_maybe_save then
-    _G._mcp_maybe_save(sprite, file)
-else
-    if file and file ~= "" then
-        sprite:saveAs(file)
-    end
-end
+_mcp_maybe_save(sprite, file)
 print("OK: drew grid " .. row_idx .. " rows, " .. pixels_drawn .. " pixels")

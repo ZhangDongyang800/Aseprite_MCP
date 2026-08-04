@@ -30,6 +30,10 @@ from src.tools.tag_tools import register_tag_tools
 from src.tools.transform_tools import register_transform_tools
 from src.tools.tileset_tools import register_tileset_tools
 from src.tools.quality_tools import register_quality_tools
+from src.tools.selection_tools import register_selection_tools
+from src.tools.color_adjustment_tools import register_color_adjustment_tools
+from src.tools.filter_tools import register_filter_tools
+from src.tools.batch_tools import register_batch_tools
 from src.resources import register_resources
 from src.prompts import register_prompts
 
@@ -99,9 +103,13 @@ def create_server() -> FastMCP:
     register_palette_tools(mcp, session_manager, runner)
     register_tag_tools(mcp, session_manager, runner)
     register_transform_tools(mcp, session_manager, runner)
-    # Task 13: 注册新增工具模块
     register_tileset_tools(mcp, session_manager, runner)
     register_quality_tools(mcp, session_manager, runner)
+    # New: selection, color adjustment, filter, batch tools
+    register_selection_tools(mcp, session_manager, runner)
+    register_color_adjustment_tools(mcp, session_manager, runner)
+    register_filter_tools(mcp, session_manager, runner)
+    register_batch_tools(mcp, session_manager, runner)
 
     # 注册资源
     register_resources(mcp, session_manager)

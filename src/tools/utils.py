@@ -132,3 +132,50 @@ def parse_json_output(
             "success": False,
             "error": f"Failed to parse response: {result['stdout']}",
         }
+
+
+# ═══════════════════════════════════════════
+# CLI 模式 Undo 支持（文件备份/恢复）
+# ═══════════════════════════════════════════
+
+def backup_ase_file(session_manager, session_id: str) -> str:
+    """备份当前 .ase 文件为 undo_backup.ase（用于 CLI 模式撤销）。
+
+    CLI 模式下每个工具调用都是独立的 aseprite -b 进程，Aseprite 的内置
+    undo 栈在进程退出后丢失。此函数通过文件级备份实现"一步撤销"。
+
+    Args:
+        session_manager: 会话管理器
+        session_id: 会话 ID
+
+    Returns:
+        backup_path: 备份文件路径，如果源文件不存在则返回空字符串
+    """
+    import shutil
+
+    ase_path = session_manager.get_ase_path(session_id)
+    if not ase_path.exists():
+        return ""
+    backup_path = ase_path.parent / "undo_backup.ase"
+    shutil.copy2(ase_path, backup_path)
+    return str(backup_path)
+
+
+def restore_ase_file(session_manager, session_id: str) -> bool:
+    """从 undo_backup.ase 恢复 .ase 文件（CLI 模式撤销）。
+
+    Args:
+        session_manager: 会话管理器
+        session_id: 会话 ID
+
+    Returns:
+        True 如果成功恢复，False 如果没有备份文件
+    """
+    import shutil
+
+    ase_path = session_manager.get_ase_path(session_id)
+    backup_path = ase_path.parent / "undo_backup.ase"
+    if not backup_path.exists():
+        return False
+    shutil.copy2(backup_path, ase_path)
+    return True

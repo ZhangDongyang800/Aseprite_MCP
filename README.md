@@ -191,7 +191,7 @@ Now AI can operate Aseprite directly — create a sprite, draw pixels, and you'l
 
 ##  What It Can Do
 
-Let AI create pixel art in Aseprite like a human artist — with a complete workflow supporting pixel-level drawing, multi-layer management, animation frame editing, palette control, animation tags, image transforms, and canvas preview. **49 tools** in total.
+Let AI create pixel art in Aseprite like a human artist — with a complete workflow supporting pixel-level drawing, multi-layer management, animation frame editing, palette control, animation tags, image transforms, selection editing, color adjustments, filters, gradients, batch operations, and canvas preview. **67+ tools** in total.
 
 ###  Pixel-Level Drawing
 
@@ -303,6 +303,49 @@ All drawing tools support `layer` and `frame` parameters, allowing drawing on a 
 | `get_canvas_preview` | Export a PNG for AI visual analysis (**core iteration tool**) |
 | `get_canvas_info` | Get canvas metadata (size, color mode, etc.) |
 | `get_pixel_color` | Query the color of a pixel at specified coordinates |
+
+### 🔲 Selection Editing (NEW)
+
+Aseprite's core editing paradigm: select → modify → deselect.
+
+| Tool | Description |
+|------|-------------|
+| `select_all` | Select entire canvas (Ctrl+A) |
+| `deselect` | Clear selection (Ctrl+D) |
+| `select_by_color` | Magic wand — select by color with tolerance |
+| `invert_selection` | Invert current selection |
+| `delete_selection` | Clear selected area to transparent (Delete key) |
+
+### 🎨 Color Adjustments (NEW)
+
+| Tool | Description |
+|------|-------------|
+| `adjust_colors` | Unified color adjustment: brightness/contrast/hue/saturation/lightness in one call |
+
+### 🔧 Layer & Frame Operations (NEW)
+
+| Tool | Description |
+|------|-------------|
+| `merge_down` | Merge layer down (Ctrl+E) |
+| `flatten_layers` | Flatten all layers |
+| `duplicate_layer` | Duplicate a layer |
+| `duplicate_frame` | Duplicate a frame |
+
+### ✨ Filters & Effects (NEW)
+
+| Tool | Description |
+|------|-------------|
+| `apply_blur` | Box blur filter (radius 1-3) |
+| `draw_gradient` | Linear/radial gradient fill |
+
+### ⚡ Efficiency Tools (NEW)
+
+| Tool | Description |
+|------|-------------|
+| `batch_edit` | ★ Execute multiple operations in ONE Aseprite call (N× efficiency in CLI mode) |
+| `run_lua` | Execute arbitrary Lua code for full Aseprite API access (escape hatch) |
+| `undo` | Undo last operation (Live mode: native; CLI mode: file backup restore) |
+| `redo` | Redo undone operation (Live mode) |
 
 ###  Other Capabilities
 

@@ -104,8 +104,8 @@ def register_advanced_draw_tools(
                 "success": False,
                 "error": f"Invalid thickness: {thickness}. Must be 1-5",
             }
-        return _run_advanced_script(
-            session_id, "add_outline.lua",
+        return run_script_with_file(
+            runner, session_manager, session_id, "add_outline.lua",
             {"color": color, "thickness": str(thickness)},
             layer=layer, frame=frame, error_label="Advanced draw operation failed",
         )
@@ -160,4 +160,53 @@ def register_advanced_draw_tools(
                 "direction": direction,
             },
             layer=layer, frame=frame, error_label="Advanced draw operation failed",
+        )
+
+    @mcp.tool
+    def draw_gradient(
+        session_id: str,
+        x: int,
+        y: int,
+        width: int,
+        height: int,
+        from_color: str,
+        to_color: str,
+        mode: str = "linear",
+        direction: str = "horizontal",
+        layer: int = 1,
+        frame: int = 1,
+    ) -> dict:
+        """在矩形区域内绘制渐变填充。
+
+        Args:
+            session_id: 会话 ID
+            x: 区域左上角 x 坐标
+            y: 区域左上角 y 坐标
+            width: 区域宽度
+            height: 区域高度
+            from_color: 起始颜色 #RRGGBB
+            to_color: 结束颜色 #RRGGBB
+            mode: 渐变模式 "linear"（线性）或 "radial"（径向），默认 linear
+            direction: 线性渐变方向 "horizontal"（水平）或 "vertical"（垂直），默认 horizontal
+            layer: 目标图层（1-based，默认 1）
+            frame: 目标帧（1-based，默认 1）
+        """
+        from_color = validate_color(from_color)
+        to_color = validate_color(to_color)
+        if mode not in ("linear", "radial"):
+            return {"success": False, "error": "mode must be 'linear' or 'radial'"}
+        if direction not in ("horizontal", "vertical"):
+            return {"success": False, "error": "direction must be 'horizontal' or 'vertical'"}
+        if width < 1 or height < 1:
+            return {"success": False, "error": "width and height must be >= 1"}
+
+        return run_script_with_file(
+            runner, session_manager, session_id, "draw_gradient.lua",
+            {
+                "x": str(x), "y": str(y),
+                "width": str(width), "height": str(height),
+                "from_color": from_color, "to_color": to_color,
+                "mode": mode, "direction": direction,
+            },
+            layer=layer, frame=frame, error_label="Gradient draw failed",
         )

@@ -88,9 +88,7 @@ def register_palette_tools(mcp, session_manager: SessionManager, runner: Aseprit
 
     @mcp.tool
     def apply_preset_palette(session_id: str, preset_name: str) -> dict:
-        """★批量★ 应用内置预设调色板到画布（整板替换）。
-
-        一次调用写入整个预设调色板，替代 N 次 set_palette_color。
+        """应用内置预设调色板到画布（整板替换，替代逐个 set_palette_color）。
         可用预设: db16(16色), db32(32色), aap64(64色), nes(NES复古), gameboy(4色绿)。
 
         Args:
@@ -111,9 +109,7 @@ def register_palette_tools(mcp, session_manager: SessionManager, runner: Aseprit
 
     @mcp.tool
     def append_palette_colors(session_id: str, colors: str) -> dict:
-        """★批量★ 一次追加多个颜色到调色板末尾，替代 N 次 set_palette_color 循环。
-
-        ⚠️ 不要循环调用 set_palette_color，N 个颜色请用本工具一次完成。
+        """追加多个颜色到调色板末尾（一次完成，替代逐个 set_palette_color）。
 
         Args:
             session_id: 会话 ID

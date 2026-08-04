@@ -130,3 +130,224 @@ _G._mcp_get_target_image = function(sprite, layer_idx, frame_idx)
     end
     return cel.image
 end
+
+-- ============================================================
+-- 共享绘制原语（供 draw_shape.lua、batch_edit.lua 等复用）
+-- ============================================================
+
+_G._mcp_pixel = function(image, x, y, color)
+    image:drawPixel(x, y, color)
+end
+
+_G._mcp_line = function(image, x1, y1, x2, y2, color)
+    local dx = math.abs(x2 - x1)
+    local dy = math.abs(y2 - y1)
+    local sx = x1 < x2 and 1 or -1
+    local sy = y1 < y2 and 1 or -1
+    local err = dx - dy
+    while true do
+        image:drawPixel(x1, y1, color)
+        if x1 == x2 and y1 == y2 then break end
+        local e2 = 2 * err
+        if e2 > -dy then err = err - dy; x1 = x1 + sx end
+        if e2 <  dx then err = err + dx; y1 = y1 + sy end
+    end
+end
+
+_G._mcp_rect = function(image, x, y, w, h, color, filled)
+    if filled then
+        for py = y, y + h - 1 do
+            for px = x, x + w - 1 do
+                image:drawPixel(px, py, color)
+            end
+        end
+    else
+        _G._mcp_line(image, x, y, x + w - 1, y, color)
+        _G._mcp_line(image, x, y + h - 1, x + w - 1, y + h - 1, color)
+        _G._mcp_line(image, x, y, x, y + h - 1, color)
+        _G._mcp_line(image, x + w - 1, y, x + w - 1, y + h - 1, color)
+    end
+end
+
+_G._mcp_ellipse = function(image, cx, cy, rx, ry, color, filled)
+    local function draw_points(ix, iy)
+        image:drawPixel(cx + ix, cy + iy, color)
+        image:drawPixel(cx - ix, cy + iy, color)
+        image:drawPixel(cx + ix, cy - iy, color)
+        image:drawPixel(cx - ix, cy - iy, color)
+    end
+    if filled then
+        for py = cy - ry, cy + ry do
+            for px = cx - rx, cx + rx do
+                local dx2, dy2 = (px - cx)^2, (py - cy)^2
+                if rx > 0 and ry > 0 and (dx2/(rx*rx) + dy2/(ry*ry)) <= 1 then
+                    image:drawPixel(px, py, color)
+                end
+            end
+        end
+    else
+        local x, y = 0, ry
+        local d1 = ry*ry - rx*rx*ry + 0.25*rx*rx
+        local dx, dy = 2*ry*ry*x, 2*rx*rx*y
+        while dx < dy do
+            draw_points(x, y)
+            if d1 < 0 then x = x+1; dx = dx+2*ry*ry; d1 = d1+dx+ry*ry
+            else x = x+1; y = y-1; dx = dx+2*ry*ry; dy = dy-2*rx*rx; d1 = d1+dx-dy+ry*ry end
+        end
+        local d2 = ry*ry*(x+0.5)^2 + rx*rx*(y-1)^2 - rx*rx*ry*ry
+        while y >= 0 do
+            draw_points(x, y)
+            if d2 > 0 then y = y-1; dy = dy-2*rx*rx; d2 = d2+rx*rx-dy
+            else x = x+1; y = y-1; dx = dx+2*ry*ry; dy = dy-2*rx*rx; d2 = d2+dx-dy+rx*rx end
+        end
+    end
+end
+
+_G._mcp_fill = function(image, x, y, target_color, w, h)
+    local src = image:getPixel(x, y)
+    if src == target_color then return end
+    local stack = {{x, y}}
+    while #stack > 0 do
+        local p = table.remove(stack)
+        local px, py = p[1], p[2]
+        if px >= 0 and px < w and py >= 0 and py < h then
+            if image:getPixel(px, py) == src then
+                image:drawPixel(px, py, target_color)
+                table.insert(stack, {px+1, py})
+                table.insert(stack, {px-1, py})
+                table.insert(stack, {px, py+1})
+                table.insert(stack, {px, py-1})
+            end
+        end
+    end
+end
+
+_G._mcp_clear_rect = function(image, x, y, w, h)
+    local t = Color{r=0,g=0,b=0,a=0}
+    for py = y, y+h-1 do
+        for px = x, x+w-1 do
+            image:drawPixel(px, py, t)
+        end
+    end
+end
+
+-- 渐变填充（linear horizontal/vertical, radial）
+_G._mcp_gradient = function(image, x, y, w, h, from_c, to_c, mode, direction)
+    for py = y, y+h-1 do
+        for px = x, x+w-1 do
+            local t
+            if mode == "linear" then
+                if direction == "horizontal" then
+                    t = w > 1 and (px-x)/(w-1) or 0
+                else
+                    t = h > 1 and (py-y)/(h-1) or 0
+                end
+            else
+                local cx, cy2 = x+w/2, y+h/2
+                local max_r = math.sqrt(w*w+h*h)/2
+                t = max_r > 0 and math.sqrt((px-cx)^2+(py-cy2)^2)/max_r or 0
+            end
+            t = math.max(0, math.min(1, t))
+            image:drawPixel(px, py, Color{
+                r=from_c.red+t*(to_c.red-from_c.red),
+                g=from_c.green+t*(to_c.green-from_c.green),
+                b=from_c.blue+t*(to_c.blue-from_c.blue),
+                a=from_c.alpha+t*(to_c.alpha-from_c.alpha),
+            })
+        end
+    end
+end
+
+-- Box blur 滤镜
+_G._mcp_blur = function(image, radius, strength)
+    local w, h = image.width, image.height
+    local orig = Image(image)
+    strength = strength or 1
+    for py = 0, h-1 do
+        for px = 0, w-1 do
+            local r, g, b, a, n = 0,0,0,0,0
+            for dy = -radius, radius do
+                for dx = -radius, radius do
+                    local nx, ny = px+dx, py+dy
+                    if nx>=0 and nx<w and ny>=0 and ny<h then
+                        local c = orig:getPixel(nx, ny)
+                        r,g,b,a = r+c.red, g+c.green, b+c.blue, a+c.alpha
+                        n = n+1
+                    end
+                end
+            end
+            local oc = orig:getPixel(px, py)
+            local s = math.min(1, strength)
+            image:drawPixel(px, py, Color{
+                r=math.max(0,math.min(255,oc.red+s*(r/n-oc.red))),
+                g=math.max(0,math.min(255,oc.green+s*(g/n-oc.green))),
+                b=math.max(0,math.min(255,oc.blue+s*(b/n-oc.blue))),
+                a=math.max(0,math.min(255,oc.alpha+s*(a/n-oc.alpha))),
+            })
+        end
+    end
+end
+
+-- ============================================================
+-- 选区 Mask 文件 I/O（CLI 模式跨进程持久化选区）
+-- ============================================================
+
+_G._mcp_save_selection = function(sprite, path)
+    if not sprite or not path then return end
+    local sel = sprite.selection
+    if sel.isEmpty then
+        local f = io.open(path, "w")
+        if f then f:write("0 0\n"); f:close() end
+        return
+    end
+    local b = sel.bounds
+    local f = io.open(path, "w")
+    if not f then return end
+    f:write(b.width .. " " .. b.height .. "\n")
+    for py = b.y, b.y+b.height-1 do
+        local spans = {}
+        local in_span, ss = false, 0
+        for px = b.x, b.x+b.width-1 do
+            if sel:contains(Point(px, py)) then
+                if not in_span then ss = px-b.x; in_span = true end
+            else
+                if in_span then table.insert(spans, ss.."-"..(px-b.x-1)); in_span = false end
+            end
+        end
+        if in_span then table.insert(spans, ss.."-"..(b.width-1)) end
+        f:write(table.concat(spans, ",") .. "\n")
+    end
+    f:close()
+end
+
+_G._mcp_load_selection = function(sprite, path)
+    local f = io.open(path, "r")
+    if not f then return function(x,y) return false end end
+    local hdr = f:read("*line")
+    if not hdr then f:close(); return function(x,y) return false end end
+    local sw, sh = hdr:match("(%d+) (%d+)")
+    if not sw then f:close(); return function(x,y) return false end end
+    sw, sh = tonumber(sw), tonumber(sh)
+    if sw == 0 or sh == 0 then f:close(); return function(x,y) return false end end
+    local rows = {}
+    for i = 1, sh do
+        local line = f:read("*line")
+        if line and line ~= "" then
+            local spans = {}
+            for seg in line:gmatch("[^,]+") do
+                local s, e = seg:match("(%d+)-(%d+)")
+                if s and e then table.insert(spans, {tonumber(s), tonumber(e)}) end
+            end
+            rows[i] = spans
+        end
+    end
+    f:close()
+    return function(x, y)
+        local row = rows[y+1]
+        if not row then return false end
+        for _, sp in ipairs(row) do
+            if x >= sp[1] and x <= sp[2] then return true end
+        end
+        return false
+    end
+end

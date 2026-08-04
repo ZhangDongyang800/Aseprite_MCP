@@ -32,9 +32,9 @@ def register_animation_tools(mcp, session_manager: SessionManager, runner: Asepr
 
     @mcp.tool
     def add_frame(session_id: str, content: str = "copy") -> dict:
-        """⚠️ 勿循环调用建多帧动画，多帧请用 draw_animation_frames 一次完成建帧+绘制。
+        """添加新帧（复制最后一帧或创建空白帧）。适合需要逐帧精细控制时使用。
 
-        添加新帧（复制最后一帧或创建空白帧）。
+        多帧批量绘制推荐用 draw_animation_frames 一次完成建帧+绘制。
 
         Args:
             session_id: 会话 ID
@@ -58,9 +58,9 @@ def register_animation_tools(mcp, session_manager: SessionManager, runner: Asepr
 
     @mcp.tool
     def set_frame_duration(session_id: str, frame: int, duration: float) -> dict:
-        """⚠️ 勿逐帧循环调用，多帧请用 apply_timing_preset 批量设置。
+        """设置单帧持续时间。适合微调某一帧的时长。
 
-        设置帧持续时间。
+        所有帧统一时长推荐用 apply_timing_preset 批量设置。
 
         Args:
             session_id: 会话 ID
@@ -137,9 +137,8 @@ def register_animation_tools(mcp, session_manager: SessionManager, runner: Asepr
     def apply_timing_preset(
         session_id: str, animation_type: str, frame_count: int = None
     ) -> dict:
-        """★批量★ 按动画类型批量设置所有帧时长，替代 N 次 set_frame_duration。
+        """按动画类型批量设置所有帧时长（一次调用，替代逐帧 set_frame_duration）。
 
-        ⚠️ 不要逐帧调用 set_frame_duration，本工具一次设置所有帧时长。
         docs §7.2：不同动作用不同时长是专业动画关键。
         可用类型: idle(400ms), walk(125ms), run(80ms), attack_hit(160ms) 等。
 
@@ -224,9 +223,7 @@ def register_animation_tools(mcp, session_manager: SessionManager, runner: Asepr
         session_id: str, grids: str, colormap: str,
         mode: str = "copy", layer: int = 1,
     ) -> dict:
-        """★批量★ 一次绘制多帧动画，替代 N 次 add_frame+clear+draw_from_grid 循环。
-
-        ⚠️ 不要逐帧调用 add_frame+draw_from_grid，本工具一次完成所有帧。
+        """一次绘制多帧动画（建帧+绘制一步完成），替代逐个 add_frame+draw_from_grid。
         6 帧动画从约 20 次调用降到 1 次。
         grids 用 | 分隔每帧，帧内行用 / 分隔。
         例: grids="RRR/RRR|GGG/GGG" 表示 2 帧各 2 行。
@@ -248,4 +245,19 @@ def register_animation_tools(mcp, session_manager: SessionManager, runner: Asepr
             return {"success": False, "error": f"Invalid mode: {mode}. Use 'copy' or 'blank'"}
         return _run_anim_script(session_id, "draw_animation_frames.lua", {
             "grids": grids, "colormap": colormap, "mode": mode, "layer": str(layer),
+        })
+
+    @mcp.tool
+    def duplicate_frame(session_id: str, frame: int) -> dict:
+        """复制指定帧（在其后插入副本）。
+
+        Args:
+            session_id: 会话 ID
+            frame: 要复制的帧号（1-based）
+        """
+        validate_session_id(session_id)
+        if frame < 1:
+            return {"success": False, "error": "frame must be >= 1"}
+        return _run_anim_script(session_id, "duplicate_frame.lua", {
+            "frame": str(frame),
         })

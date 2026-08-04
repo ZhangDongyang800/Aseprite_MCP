@@ -104,6 +104,42 @@ class AsepriteRunner:
         """
         return Path(self.config.aseprite_path).exists()
 
+    def run_script_path(self, script_path: str, params: dict) -> dict:
+        """Execute an Aseprite Lua script by absolute path (for run_lua escape hatch).
+
+        Unlike run_script which looks up scripts_dir/<script_name>, this takes
+        an absolute path to a Lua file directly.
+
+        Args:
+            script_path: Absolute path to the Lua script
+            params: Dictionary of parameters
+
+        Returns:
+            Result dict (same format as run_script)
+        """
+        cmd = [self.config.aseprite_path, "-b"]
+        for key, value in params.items():
+            cmd.extend(["--script-param", f"{key}={value}"])
+        cmd.extend(["--script", script_path])
+
+        try:
+            result = subprocess.run(
+                cmd, capture_output=True, text=True, encoding="utf-8",
+                errors="replace", timeout=30,
+            )
+            if result.returncode == 0:
+                return {"success": True, "stdout": result.stdout, "stderr": result.stderr}
+            else:
+                return {
+                    "success": False, "stdout": result.stdout,
+                    "stderr": result.stderr,
+                    "error": f"Aseprite exited with code {result.returncode}",
+                }
+        except subprocess.TimeoutExpired:
+            return {"success": False, "stdout": "", "stderr": "", "error": "Timeout exceeded 30s"}
+        except FileNotFoundError as e:
+            return {"success": False, "stdout": "", "stderr": "", "error": f"Executable not found: {e}"}
+
 
 @dataclass
 class WebSocketRunner:
@@ -140,6 +176,10 @@ class WebSocketRunner:
         # 构造完整脚本路径（Aseprite 扩展需要绝对路径来 dofile）
         # bridge.send_request 已返回与 AsepriteRunner 一致的格式，直接透传
         script_path = str(self.config.scripts_dir / script_name)
+        return self.bridge.send_request(script_path, params)
+
+    def run_script_path(self, script_path: str, params: dict) -> dict:
+        """Execute a Lua script by absolute path via WebSocket (for run_lua)."""
         return self.bridge.send_request(script_path, params)
 
     def check_aseprite_exists(self) -> bool:

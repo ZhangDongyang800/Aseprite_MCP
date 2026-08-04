@@ -1,4 +1,4 @@
-"""图层管理工具：添加、删除、设置属性、查询信息、移动 cel。
+"""图层管理工具：添加、删除、设置属性、查询信息、移动 cel、合并、复制。
 
 每个工具调用对应的 Lua 脚本，通过 Aseprite CLI 执行图层操作。
 """
@@ -7,7 +7,10 @@ from typing import Optional
 
 from src.session import SessionManager
 from src.runner import AsepriteRunner
-from src.tools.utils import parse_json_output, run_script_with_file, validate_session_id
+from src.tools.utils import (
+    backup_ase_file, parse_json_output, run_script_with_file,
+    validate_session_id,
+)
 
 
 def register_layer_tools(mcp, session_manager: SessionManager, runner: AsepriteRunner):
@@ -126,4 +129,39 @@ def register_layer_tools(mcp, session_manager: SessionManager, runner: AsepriteR
             "source_frame": str(source_frame),
             "dest_layer": str(dest_layer),
             "dest_frame": str(dest_frame),
+        })
+
+    @mcp.tool
+    def merge_down(session_id: str, layer: str = "") -> dict:
+        """合并指定图层到下层（Ctrl+E 等效）。不指定则合并当前活跃图层。
+
+        Args:
+            session_id: 会话 ID
+            layer: 图层名称或 1-based 索引（留空则合并顶部非背景图层）
+        """
+        backup_ase_file(session_manager, session_id)
+        return _run_layer_script(session_id, "merge_down.lua", {
+            "layer": str(layer),
+        })
+
+    @mcp.tool
+    def flatten_layers(session_id: str) -> dict:
+        """平面化所有图层（合并为单层）。
+
+        Args:
+            session_id: 会话 ID
+        """
+        backup_ase_file(session_manager, session_id)
+        return _run_layer_script(session_id, "flatten.lua", {})
+
+    @mcp.tool
+    def duplicate_layer(session_id: str, layer: str = "") -> dict:
+        """复制指定图层。不指定则复制当前活跃图层。
+
+        Args:
+            session_id: 会话 ID
+            layer: 图层名称或 1-based 索引（留空则复制顶部图层）
+        """
+        return _run_layer_script(session_id, "duplicate_layer.lua", {
+            "layer": str(layer),
         })

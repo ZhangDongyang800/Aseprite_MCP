@@ -54,3 +54,6 @@ docs/*
 # *.gif
 # *.png
 # *.jpg
+
+# 测试
+tests/

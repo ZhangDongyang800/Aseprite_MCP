@@ -191,15 +191,15 @@ def register_prompts(mcp):
   对每一帧调用 set_frame_duration 设置时长为 {duration} 秒
 
 第4步：逐帧检查动画连贯性
-  对每一帧调用 get_canvas_preview 检查：
+   对每一帧调用 get_canvas_preview 检查：
   - 相邻帧变化是否太大或太小？（行走动画每帧位移 1-2 像素）
   - 是否有抖动（不该动的像素在跳动）？
   - 动作是否流畅？
 
 第5步：导出与保存
-  1. 可选：调用 add_tag 创建动画标签（如"Walk"），设置播放方向
-  2. 调用 export_gif 导出 GIF 动画
-  3. 调用 save_sprite 保存
+   1. 可选：调用 add_tag 创建动画标签（如"Walk"），设置播放方向
+   2. 调用 export_gif 导出 GIF 动画
+   3. 调用 save_sprite 保存
 
 ══════════════════════════════════════════
 理想调用次数（{frame_count} 帧，调用优化基准）：
@@ -213,6 +213,77 @@ def register_prompts(mcp):
 - 先画关键帧（最极端姿势），再补中间帧
 - 对称动作可以用 mirror_half 减少工作量
 - draw_from_grid 的 offset 参数可在帧间做微调
+"""
+
+    @mcp.prompt
+    def animation_consistency_prompt(
+        description: str,
+        frame_count: int = 4,
+        fps: int = 8,
+        size: str = "32x32",
+    ) -> str:
+        """生成动画一致性工作流引导（帧继承 + 补间 + 差异验证）。
+
+        解决 AI 动画最常见的帧间脱节问题：每帧必须基于上一帧做增量，
+        静态部分由 propagate_cels 保证零差异，动态部分用补间或局部编辑。
+
+        Args:
+            description: 动画描述（如"行走循环"、"挥剑攻击"）
+            frame_count: 帧数（默认4帧）
+            fps: 每秒帧数（默认8fps）
+            size: 画布尺寸，如 32x32
+        """
+        duration = round(1.0 / fps, 4)
+        return f"""请使用 Aseprite MCP 工具创建动画：{description}
+
+动画参数：{frame_count} 帧，{fps} fps（每帧 {duration} 秒），画布 {size}
+
+══════════════════════════════════════════
+帧间一致性工作流（核心原则：帧 N+1 = 帧 N + 增量）
+══════════════════════════════════════════
+
+第1步：分层规划（决定哪些层会动）
+  1. 调用 create_sprite 创建 {size} 画布
+  2. 用 add_layer 为"会动的部件"建独立图层（如 Body、Arm、Sword）
+     —— 静态层（身体主干、背景）和动态层（四肢、武器）必须分开
+  3. 用 draw_from_grid 绘制第 1 帧关键姿势（layer 指定到各层）
+
+第2步：固定静态部分（关键！）
+  调用 propagate_cels（source_frame=1, to_frame={frame_count}）
+  把静态层从第 1 帧复制到全部帧 —— 静态像素帧间零差异由构造保证
+
+第3步：逐帧做增量编辑（只改动态层）
+  对每一帧：
+  1. 调用 add_frame（content="copy"）复制上一帧
+  2. 只改动的部分：
+     - 肢体平移 → move_cel / tween_cel_positions
+     - 肢体缩放（呼吸、压扁）→ tween_cel_scale
+     - 淡入淡出 → tween_cel_opacity
+     - 局部像素变化 → clear_region + draw_from_grid 只重画变化区域
+  3. 绝对不要整帧重画！重画必失真
+
+第4步：验证帧间差异（必须执行！）
+  对每对相邻帧调用 compare_frames 检查：
+  - changed_pct 是否合理？（动作帧通常 <30%，过大=脱节，过小=没动）
+  - bbox 是否集中在预期区域？（挥剑应集中在剑臂附近）
+  - 静态层 changed 是否为 0？
+  再用 export_contact_sheet 一次看完整条动画，检查连贯性
+
+第5步：设置帧时长与保存
+  1. 调用 apply_timing_preset（或逐帧 set_frame_duration 设 {duration} 秒）
+  2. 调用 export_gif 导出预览
+  3. 调用 save_sprite 保存
+
+══════════════════════════════════════════
+工具使用优先级：
+══════════════════════════════════════════
+  1. propagate_cels     ← 静态层一次性铺满全部帧（首选）
+  2. add_frame(copy)    ← 帧间继承（绝不 blank 重画）
+  3. tween_cel_*        ← 位置/缩放/透明度补间（数学插值不抖动）
+  4. compare_frames     ← 量化验证帧间差异（每对相邻帧必查）
+  5. export_contact_sheet ← 整条动画总览（一次看全部帧）
+  6. draw_from_grid     ← 仅局部修改时指定 offset 重画变化区域
+禁止：每帧从空白开始重画 / 跳过 compare_frames 验证
 """
 
     @mcp.prompt

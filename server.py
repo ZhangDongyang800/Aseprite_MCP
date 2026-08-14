@@ -34,6 +34,7 @@ from src.tools.selection_tools import register_selection_tools
 from src.tools.color_adjustment_tools import register_color_adjustment_tools
 from src.tools.filter_tools import register_filter_tools
 from src.tools.batch_tools import register_batch_tools
+from src.tools.import_tools import register_import_tools
 from src.resources import register_resources
 from src.prompts import register_prompts
 
@@ -110,6 +111,7 @@ def create_server() -> FastMCP:
     register_color_adjustment_tools(mcp, session_manager, runner)
     register_filter_tools(mcp, session_manager, runner)
     register_batch_tools(mcp, session_manager, runner)
+    register_import_tools(mcp, session_manager, runner)
 
     # 注册资源
     register_resources(mcp, session_manager)

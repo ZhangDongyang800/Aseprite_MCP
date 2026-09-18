@@ -55,6 +55,29 @@ def test_compile_non_atomic_has_no_transaction():
     assert "app.transaction(" not in src
 
 
+def test_compile_non_bootstrap_calls_resolve():
+    spec = _spec()
+    src = compile_ops(
+        [(spec, _P(x=1, color="#000000"))],
+        file_path=Path("c.ase"), scripts_dir=Path("s"), atomic=False,
+    )
+    assert "pcall(_mcp_op_draw_pixel, _resolve(), {x=1,color=\"#000000\"})" in src
+    assert ", _sprite," not in src
+
+
+def test_compile_create_sprite_bootstrap_uses_created_sprite():
+    spec = OpSpec(
+        name="create_sprite", category="draw", params=_P,
+        lua="_mcp_op_create_sprite", mutating=True,
+    )
+    src = compile_ops(
+        [(spec, _P(x=16, color="#FFFFFF"))],
+        file_path=Path("c.ase"), scripts_dir=Path("s"), atomic=False,
+    )
+    assert "pcall(_mcp_op_create_sprite, nil, {x=16,color=\"#FFFFFF\"})" in src
+    assert "_sprite = _G._mcp_created_sprite" in src
+
+
 def test_parse_result_stdout():
     payload = '{\n"ops": []\n}'
     out = f"noise\n__MCP_JSON__{payload}\n"

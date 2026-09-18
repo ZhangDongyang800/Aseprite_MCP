@@ -114,7 +114,7 @@ def compile_ops(
     for i, (spec, params) in enumerate(parsed, start=1):
         if spec.lua is None:
             continue  # 元 op（如 close_session）由 Python 侧处理，不生成 Lua
-        target = "_sprite"
+        target = "_resolve()"
         after = ""
         if i == 1 and spec.name in _BOOTSTRAP_OPS:
             target = "nil"

@@ -1,3 +1,4 @@
+import json
 import shutil
 from pathlib import Path
 from unittest.mock import MagicMock
@@ -10,6 +11,19 @@ from src.session import SessionManager
 from src.v2.executor import Engine
 from src.v2.registry import OpRegistry, OpSpec
 from src.v2.result import ErrorCode
+
+TRANSACTION_WARNING = "app.transaction unavailable; CLI atomicity enforced by file snapshot"
+
+
+def _payload(ops, *, saved=True, error=None, transaction=None):
+    body = {"ops": ops, "saved": saved, "error": error}
+    if transaction is not None:
+        body["transaction"] = transaction
+    return {
+        "success": True,
+        "stdout": "__MCP_JSON__" + json.dumps(body),
+        "stderr": "",
+    }
 
 
 class _DrawPixelParams(BaseModel):
@@ -78,6 +92,75 @@ def test_unknown_op_returns_invalid_args(engine):
     env = eng.apply(sid, [{"op": "definitely_not_an_op"}])
     assert env.ok is False
     assert env.error.code == ErrorCode.INVALID_ARGS
+
+
+def test_failed_cli_batch_restores_snapshot_and_keeps_undo_backup(engine):
+    eng, sm, runner = engine
+    sid = sm.create_session(8, 8)
+    path = sm.get_ase_path(sid)
+    path.write_bytes(b"V1")
+    work = sm.get_work_dir(sid)
+    # 先做一次成功批量，产生 undo_backup.ase = V1（前一次成功批量的快照）
+    assert eng.apply(sid, [{"op": "draw_pixel", "x": 1, "y": 1, "color": "#FF0000"}]).ok is True
+    assert (work / "undo_backup.ase").read_bytes() == b"V1"
+
+    def fail_after_partial_write(script, params):
+        path.write_bytes(b"PARTIAL")  # 模拟失败批量已把部分结果写盘
+        return _payload(
+            [{"op": "draw_pixel", "ok": False, "data": "boom"}],
+            saved=False, error="boom", transaction=False,
+        )
+
+    runner.run_script_path.side_effect = fail_after_partial_write
+    env = eng.apply(sid, [{"op": "draw_pixel", "x": 1, "y": 1, "color": "#FF0000"}])
+    assert env.ok is False
+    assert path.read_bytes() == b"V1"
+    assert (work / "undo_backup.ase").read_bytes() == b"V1"
+    assert not (work / "_batch_before.ase").exists()
+
+
+def test_successful_cli_batch_promotes_snapshot_to_undo_backup(engine):
+    eng, sm, runner = engine
+    sid = sm.create_session(8, 8)
+    path = sm.get_ase_path(sid)
+    path.write_bytes(b"V1")
+    work = sm.get_work_dir(sid)
+
+    def write_and_succeed(script, params):
+        path.write_bytes(b"V2")
+        return _payload([{"op": "draw_pixel", "ok": True, "data": {}}], transaction=True)
+
+    runner.run_script_path.side_effect = write_and_succeed
+    env = eng.apply(sid, [{"op": "draw_pixel", "x": 1, "y": 1, "color": "#FF0000"}])
+    assert env.ok is True
+    assert path.read_bytes() == b"V2"
+    assert (work / "undo_backup.ase").read_bytes() == b"V1"
+    assert not (work / "_batch_before.ase").exists()
+
+
+def test_success_without_transaction_adds_warning(engine):
+    eng, sm, runner = engine
+    sid = sm.create_session(8, 8)
+    _make_ase(sm, sid)
+    runner.run_script_path.return_value = _payload(
+        [{"op": "draw_pixel", "ok": True, "data": {}}], transaction=False
+    )
+    env = eng.apply(sid, [{"op": "draw_pixel", "x": 1, "y": 1, "color": "#FF0000"}])
+    assert env.ok is True
+    assert TRANSACTION_WARNING in env.warnings
+
+
+def test_failure_without_transaction_adds_warning(engine):
+    eng, sm, runner = engine
+    sid = sm.create_session(8, 8)
+    _make_ase(sm, sid)
+    runner.run_script_path.return_value = _payload(
+        [{"op": "draw_pixel", "ok": False, "data": "boom"}],
+        saved=False, error="boom", transaction=False,
+    )
+    env = eng.apply(sid, [{"op": "draw_pixel", "x": 1, "y": 1, "color": "#FF0000"}])
+    assert env.ok is False
+    assert TRANSACTION_WARNING in env.warnings
 
 
 def test_undo_redo_roundtrip(engine):

@@ -42,7 +42,7 @@ def test_lua_value_quotes_lua_keywords_and_non_ascii_keys():
     assert lua_value({"_ok1": 2}) == "{_ok1=2}"
 
 
-def test_compile_contains_single_transaction_and_literal():
+def test_compile_atomic_probes_transaction_and_uses_body():
     spec = _spec()
     params = _P(x=3, color="#FF0000")
     src = compile_ops(
@@ -51,10 +51,13 @@ def test_compile_contains_single_transaction_and_literal():
         scripts_dir=Path("C:/repo/scripts"),
         atomic=True,
     )
-    assert "app.transaction(" in src
     assert "_mcp_op_draw_pixel" in src
     assert "{x=3,color=\"#FF0000\"}" in src
-    assert src.count("app.transaction(") == 1
+    assert "local _body = function()" in src
+    # 探测 + 真实执行，共两处 app.transaction（均以 pcall(app.transaction, ...) 形式调用）
+    assert src.count("app.transaction") == 2
+    assert src.count("pcall(app.transaction,") == 2
+    assert "transaction=_tx_used" in src
     assert "dofile" in src and "mcp_common.lua" in src
 
 
@@ -65,6 +68,7 @@ def test_compile_non_atomic_has_no_transaction():
         file_path=Path("c.ase"), scripts_dir=Path("s"), atomic=False,
     )
     assert "app.transaction(" not in src
+    assert "transaction=_tx_used" in src  # 非原子路径报告 transaction=false
 
 
 def test_compile_non_bootstrap_calls_resolve():

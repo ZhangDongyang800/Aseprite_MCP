@@ -50,6 +50,23 @@ def register_v2_tools(mcp, session_manager, runner, config):
                 session_id=session_id, mode=config.mode,
             )
 
+        # undo/redo 是元 op：只在单 op 批量中路由到引擎（不生成 Lua）
+        meta = {spec.name for spec, _ in parsed} & {"undo", "redo"}
+        if meta:
+            if len(parsed) != 1:
+                return Envelope.failure(
+                    ErrorCode.INVALID_ARGS,
+                    "undo/redo cannot be combined with other ops",
+                    hint="undo/redo must be a single-op batch",
+                    session_id=session_id, mode=config.mode,
+                )
+            if not dry_run:
+                if session_id is None:
+                    return engine._missing(session_id)
+                if parsed[0][0].name == "undo":
+                    return engine.undo(session_id)
+                return engine.redo(session_id)
+
         first = ops[0].get("op") if isinstance(ops[0], dict) else None
         if not dry_run and session_id is None and first in ("create_sprite", "open_sprite"):
             session_id = session_manager.create_session(

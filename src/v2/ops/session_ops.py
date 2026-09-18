@@ -40,6 +40,10 @@ class CloseSession(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
 
+class UndoRedo(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+
 def register() -> None:
     REGISTRY.register(OpSpec("create_sprite", "session", CreateSprite,
                              lua="_mcp_op_create_sprite", mutating=True))
@@ -49,6 +53,9 @@ def register() -> None:
                              lua="_mcp_op_save_sprite", mutating=True))
     REGISTRY.register(OpSpec("close_session", "session", CloseSession,
                              mutating=True, destructive=True))
+    # 元 op：无 Lua，由 tools.apply_operations 路由到 Engine.undo/redo（spec §6.3）
+    REGISTRY.register(OpSpec("undo", "meta", UndoRedo, mutating=True))
+    REGISTRY.register(OpSpec("redo", "meta", UndoRedo, mutating=True))
 
 
 register()

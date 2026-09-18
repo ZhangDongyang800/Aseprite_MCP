@@ -1,3 +1,6 @@
+import pytest
+from pydantic import ValidationError
+
 from src.v2.ops import REGISTRY  # noqa: F401  触发注册
 from src.v2.registry import REGISTRY as R
 
@@ -23,3 +26,14 @@ def test_create_sprite_requires_size():
 
 def test_close_session_is_destructive():
     assert R.get("close_session").destructive is True
+
+
+@pytest.mark.parametrize("name", ["undo", "redo"])
+def test_undo_redo_are_meta_ops(name):
+    spec = R.get(name)
+    assert spec.category == "meta"
+    assert spec.mutating is True
+    assert spec.lua is None
+    spec.params.model_validate({})
+    with pytest.raises(ValidationError):
+        spec.params.model_validate({"x": 1})

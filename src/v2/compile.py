@@ -100,7 +100,7 @@ _BOOTSTRAP_OPS = {"create_sprite", "open_sprite"}
 _FOOTER = """if _saved_ok then
   _mcp_maybe_save(_sprite, _file)
 end
-print("\\n{marker}" .. json.encode({{ops=_results, saved=_saved_ok and true or false, error=_run_error}}))
+print("\\n{marker}" .. json.encode({{ops=_results, saved=_saved_ok and true or false, error=_run_error, transaction=_tx_used}}))
 """
 
 
@@ -147,16 +147,26 @@ def compile_ops(
     if atomic:
         runner = f"""local _saved_ok = true
 local _run_error = nil
-local _tx_ok, _tx_err = pcall(function()
-  app.transaction("MCP: {len(parsed)} ops", function()
-{body}  end)
-end)
-if not _tx_ok then _saved_ok = false; _run_error = tostring(_tx_err) end
+local _tx_used = false
+local _body = function()
+{body}end
+if pcall(app.transaction, "MCP: {len(parsed)} ops", function() end) then
+  _tx_used = true
+  local _ok, _err = pcall(app.transaction, "MCP: {len(parsed)} ops", _body)
+  if not _ok then _saved_ok = false; _run_error = tostring(_err) end
+else
+  local _ok, _err = pcall(_body)
+  if not _ok then _saved_ok = false; _run_error = tostring(_err) end
+end
 """
     else:
         runner = f"""local _saved_ok = true
 local _run_error = nil
-{body}"""
+local _tx_used = false
+local _body = function()
+{body}end
+_body()
+"""
 
     return header + runner + _FOOTER.format(marker=RESULT_MARKER)
 

@@ -11,6 +11,8 @@ from src.v2.result import Artifact, Envelope, ErrorCode, OpResult, UndoInfo
 
 BACKUP_NAME = "undo_backup.ase"
 REDO_NAME = "redo_backup.ase"
+SNAPSHOT_NAME = "_batch_before.ase"
+TRANSACTION_WARNING = "app.transaction unavailable; CLI atomicity enforced by file snapshot"
 
 
 class Engine:
@@ -146,10 +148,15 @@ class Engine:
             return self._missing(session_id)
 
         mutating = any(spec.mutating for spec, _ in parsed)
-        if mutating and self.config.mode == "cli":
+        snapshot = mutating and self.config.mode == "cli"
+        before = work / SNAPSHOT_NAME
+        if snapshot:
+            # 新编辑清空 redo 栈（标准 undo 语义）；不覆盖 undo_backup，
+            # 失败时用批前快照回滚，成功后才提升为 undo_backup。
             (work / REDO_NAME).unlink(missing_ok=True)
+            before.unlink(missing_ok=True)
             if path.exists():
-                shutil.copy2(path, work / BACKUP_NAME)
+                shutil.copy2(path, before)
 
         source = compile_ops(
             [(s, p) for s, p in parsed if s.lua],
@@ -162,6 +169,7 @@ class Engine:
 
         result = self.runner.run_script_path(str(batch), {})
         if not result["success"]:
+            self._restore_snapshot(before, path)
             return Envelope.failure(
                 ErrorCode.SCRIPT_ERROR,
                 result.get("error", "aseprite script failed"),
@@ -171,6 +179,7 @@ class Engine:
         try:
             payload = parse_result_stdout(result.get("stdout", ""))
         except ValueError as exc:
+            self._restore_snapshot(before, path)
             return Envelope.failure(
                 ErrorCode.LUA_RUNTIME_ERROR, str(exc),
                 session_id=session_id, mode=self.config.mode,
@@ -182,16 +191,26 @@ class Engine:
         ]
         failed = next((i for i, r in enumerate(op_results) if not r.ok), None)
         if failed is not None or payload.get("error"):
-            return Envelope.failure(
+            self._restore_snapshot(before, path)
+            env = Envelope.failure(
                 ErrorCode.OP_FAILED,
                 str(payload.get("error") or "op failed"),
                 op_index=failed,
                 session_id=session_id, mode=self.config.mode,
                 op_results=op_results,
             )
+            if snapshot and payload.get("transaction") is False:
+                env.warnings.append(TRANSACTION_WARNING)
+            return env
+
+        if snapshot:
+            if before.exists():
+                before.replace(work / BACKUP_NAME)
+        else:
+            before.unlink(missing_ok=True)
 
         artifacts = self._collect_artifacts(payload)
-        return Envelope(
+        env = Envelope(
             ok=True, session_id=session_id, mode=self.config.mode,
             op_results=op_results,
             artifacts=artifacts,
@@ -199,6 +218,14 @@ class Engine:
             undo=UndoInfo(mode=self._undo_mode(), available=mutating),
             timing_ms=int((time.time() - start) * 1000),
         )
+        if payload.get("transaction") is False:
+            env.warnings.append(TRANSACTION_WARNING)
+        return env
+
+    def _restore_snapshot(self, before, path) -> None:
+        if before.exists():
+            shutil.copy2(before, path)
+            before.unlink()
 
     def _collect_artifacts(self, payload: dict) -> list[Artifact]:
         out: list[Artifact] = []

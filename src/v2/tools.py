@@ -76,4 +76,29 @@ def register_v2_tools(mcp, session_manager, runner, config):
                 hint="prefer apply_operations; run_lua can break documents",
                 session_id=session_id, mode=config.mode,
             )
-        raise NotImplementedError("implemented in Task 1.8")
+        try:
+            work = session_manager.get_work_dir(session_id)
+        except KeyError:
+            return Envelope.failure(
+                ErrorCode.SESSION_NOT_FOUND, f"session not found: {session_id}",
+                session_id=session_id, mode=config.mode,
+            )
+        snippet = work / "_run_lua.lua"
+        snippet.write_text(code, encoding="utf-8")
+        result = runner.run_script("mcp_run_lua.lua", {
+            "file": str(session_manager.get_ase_path(session_id)),
+            "code_path": str(snippet),
+        })
+        if not result["success"]:
+            return Envelope.failure(
+                ErrorCode.LUA_RUNTIME_ERROR,
+                result.get("error", "run_lua failed"),
+                hint=result.get("stderr", ""),
+                session_id=session_id, mode=config.mode,
+            )
+        return Envelope(
+            ok=True, session_id=session_id, mode=config.mode,
+            op_results=[OpResult(op="run_lua", ok=True,
+                                 data={"stdout": result.get("stdout", "")})],
+            changed=True,
+        )

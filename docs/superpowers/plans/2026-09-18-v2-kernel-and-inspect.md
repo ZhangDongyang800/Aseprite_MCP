@@ -642,7 +642,7 @@ def _spec():
 def test_lua_string_escapes_control_and_quotes():
     assert lua_string('a"b') == '"a\\"b"'
     assert lua_string("a\nb") == '"a\\nb"'
-    assert lua_string("a\x01b") == '"a\\1b"'
+    assert lua_string("a\x01b") == '"a\\x01b"'
     assert lua_string("中文") == '"中文"'
 
 
@@ -717,7 +717,7 @@ def lua_string(s: str) -> str:
         elif ch == "\t":
             out.append("\\t")
         elif code < 32 or code == 127:
-            out.append(f"\\{code}")
+            out.append(f"\\x{code:02x}")
         else:
             out.append(ch)
     out.append('"')
@@ -806,7 +806,7 @@ def compile_ops(
     for i, (spec, params) in enumerate(parsed, start=1):
         if spec.lua is None:
             continue  # 元 op（如 close_session）由 Python 侧处理，不生成 Lua
-        target = "_sprite"
+        target = "_resolve()"
         after = ""
         if i == 1 and spec.name in _BOOTSTRAP_OPS:
             target = "nil"
@@ -997,12 +997,9 @@ end
 - `_mcp_op_fill_region` 用 `_mcp_fill`（`mcp_common.lua:206-223`），其参数为 target_color，不是源色，注意与旧 `fill_region.lua` 的语义核对。
 - 边界：越界坐标由 `image:drawPixel` 原生处理，不额外校验。
 
-- [ ] **Step 5: 修正 `mcp_common.lua` 的 Live 复用**
+- [ ] **Step 5: 不改 `mcp_common.lua`（裁定）**
 
-将 `scripts/mcp_common.lua:84-93` 的"Live 尺寸匹配则复用"分支删除，改为始终新建（与 `_mcp_op_create_sprite` 重叠，保留一个实现即可）。确认无旧脚本依赖复用语义：
-
-Run: `rg "get_or_create" scripts src tests`
-Expected: 仅 `mcp_common.lua` 自身定义处；若有调用，改为直接 `Sprite(...)`。
+`_mcp_get_or_create_sprite` 仍被 v1 的 `scripts/create_sprite.lua:31-32` 调用（`server.py:98` 仍注册旧工具，直到 Task 1.9）。v2 的 `_mcp_op_create_sprite` 本身始终新建、不复用活动 sprite，已满足 spec P0-7；旧 helper 随 v1 工具在 Task 1.9 退役后在阶段 3 一并删除。记录遗留缺陷：`mcp_common.lua:77` 的 `ColorMode.GRAYSCALE` 不是合法常量（应为 `ColorMode.GRAY`），仅影响 v1 灰度路径。
 
 - [ ] **Step 6: 运行测试**
 
@@ -1128,6 +1125,43 @@ def test_redo_without_backup_is_honest(engine):
     env = eng.redo(sid)
     assert env.ok is False
     assert env.error.code == ErrorCode.NO_MORE_REDO
+
+
+def test_live_undo_redo_use_native_without_backups(tmp_path):
+    config = Config()
+    config.work_dir = tmp_path
+    config.mode = "ws"
+    sm = SessionManager(config)
+    runner = MagicMock()
+    runner.run_script.return_value = {"success": True, "stdout": "OK", "stderr": ""}
+    eng = Engine(sm, runner, config)
+    sid = sm.create_session(8, 8)
+    _make_ase(sm, sid)
+
+    assert eng.undo(sid).ok is True
+    assert eng.redo(sid).ok is True
+    assert runner.run_script.call_count == 2
+
+
+def test_new_mutating_apply_clears_redo(engine):
+    eng, sm, _ = engine
+    sid = sm.create_session(8, 8)
+    path = sm.get_ase_path(sid)
+    path.write_bytes(b"V1")
+    shutil.copy2(path, path.parent / "undo_backup.ase")
+    path.write_bytes(b"V2")
+    assert eng.undo(sid).ok is True          # 现在有 redo_backup
+    assert (path.parent / "redo_backup.ase").exists()
+    eng.apply(sid, [{"op": "draw_pixel", "x": 1, "y": 1, "color": "#FF0000"}])
+    assert not (path.parent / "redo_backup.ase").exists()
+
+
+def test_undo_redo_unknown_session_returns_envelope(engine):
+    eng, _, _ = engine
+    env = eng.undo("missing")
+    assert env.ok is False and env.error.code == ErrorCode.SESSION_NOT_FOUND
+    env = eng.redo("missing")
+    assert env.ok is False and env.error.code == ErrorCode.SESSION_NOT_FOUND
 ```
 
 - [ ] **Step 2: 运行确认失败**
@@ -1140,6 +1174,7 @@ Expected: FAIL，模块不存在。
 ```python
 """执行器：锁、备份、编译、单进程执行（spec §6）。"""
 
+import contextlib
 import shutil
 import threading
 import time
@@ -1167,6 +1202,12 @@ class Engine:
 
     # ---------- public ----------
 
+    @contextlib.contextmanager
+    def session_lock(self, session_id: str):
+        """公共每会话锁：run_lua 与 inspect 必须经此串行化。"""
+        with self._lock(session_id):
+            yield
+
     def apply(self, session_id, raw_ops, *, atomic=True, dry_run=False) -> Envelope:
         start = time.time()
         parsed, err = REGISTRY.validate(raw_ops)
@@ -1192,26 +1233,32 @@ class Engine:
 
     def undo(self, session_id) -> Envelope:
         with self._lock(session_id):
-            work = self.session_manager.get_work_dir(session_id)
-            path = self.session_manager.get_ase_path(session_id)
+            try:
+                work = self.session_manager.get_work_dir(session_id)
+                path = self.session_manager.get_ase_path(session_id)
+            except KeyError:
+                return self._missing(session_id)
+            if self.config.mode != "cli":
+                return self._native("undo", session_id)
             backup = work / BACKUP_NAME
             if not backup.exists():
                 return Envelope.failure(
                     ErrorCode.NO_MORE_UNDO, "nothing to undo (no backup)",
                     session_id=session_id, mode=self.config.mode,
                 )
-            if self.config.mode == "cli":
-                if path.exists():
-                    shutil.copy2(path, work / REDO_NAME)
-                shutil.copy2(backup, path)
-                backup.unlink()
-                return self._ok(session_id, "undo")
-            return self._native("undo", session_id)
+            if path.exists():
+                shutil.copy2(path, work / REDO_NAME)
+            shutil.copy2(backup, path)
+            backup.unlink()
+            return self._ok(session_id, "undo")
 
     def redo(self, session_id) -> Envelope:
         with self._lock(session_id):
-            work = self.session_manager.get_work_dir(session_id)
-            path = self.session_manager.get_ase_path(session_id)
+            try:
+                work = self.session_manager.get_work_dir(session_id)
+                path = self.session_manager.get_ase_path(session_id)
+            except KeyError:
+                return self._missing(session_id)
             redo_backup = work / REDO_NAME
             if self.config.mode == "cli" and not redo_backup.exists():
                 return Envelope.failure(
@@ -1219,13 +1266,20 @@ class Engine:
                     session_id=session_id, mode=self.config.mode,
                 )
             if self.config.mode == "cli":
-                shutil.copy2(path, work / BACKUP_NAME)
+                if path.exists():
+                    shutil.copy2(path, work / BACKUP_NAME)
                 shutil.copy2(redo_backup, path)
                 redo_backup.unlink()
                 return self._ok(session_id, "redo")
             return self._native("redo", session_id)
 
     # ---------- internals ----------
+
+    def _missing(self, session_id) -> Envelope:
+        return Envelope.failure(
+            ErrorCode.SESSION_NOT_FOUND, f"session not found: {session_id}",
+            session_id=session_id, mode=self.config.mode,
+        )
 
     def _undo_mode(self) -> str:
         return "file_backup" if self.config.mode == "cli" else "transaction"
@@ -1262,8 +1316,11 @@ class Engine:
             )
 
         mutating = any(spec.mutating for spec, _ in parsed)
-        if mutating and self.config.mode == "cli" and path.exists():
-            shutil.copy2(path, work / BACKUP_NAME)
+        if mutating and self.config.mode == "cli":
+            # 新编辑清空 redo 栈（标准 undo 语义）
+            (work / REDO_NAME).unlink(missing_ok=True)
+            if path.exists():
+                shutil.copy2(path, work / BACKUP_NAME)
 
         source = compile_ops(
             [(s, p) for s, p in parsed if s.lua],
@@ -1618,6 +1675,26 @@ def test_apply_operations_session_created_by_first_op(tools):
     ])
     assert env.ok is True
     assert env.session_id in [s["session_id"] for s in sm.list_sessions()]
+
+
+def test_dry_run_does_not_create_session(tools):
+    captured, sm, _ = tools
+    before = len(sm.list_sessions())
+    env = captured["apply_operations"](
+        ops=[{"op": "create_sprite", "width": 8, "height": 8}], dry_run=True
+    )
+    assert env.ok is True
+    assert len(sm.list_sessions()) == before
+
+
+def test_dry_run_does_not_close_session(tools):
+    captured, sm, _ = tools
+    sid = sm.create_session(8, 8)
+    env = captured["apply_operations"](
+        session_id=sid, ops=[{"op": "close_session"}], confirmed=True, dry_run=True
+    )
+    assert env.ok is True
+    assert sid in [s["session_id"] for s in sm.list_sessions()]
 ```
 
 - [ ] **Step 2: 运行确认失败**
@@ -1669,16 +1746,7 @@ def register_v2_tools(mcp, session_manager, runner, config):
                 session_id=session_id, mode=config.mode,
             )
 
-        first = ops[0].get("op") if isinstance(ops[0], dict) else None
-        if session_id is None and first in ("create_sprite", "open_sprite"):
-            session_id = session_manager.create_session(
-                width=int(ops[0].get("width", 1)),
-                height=int(ops[0].get("height", 1)),
-                color_mode=str(ops[0].get("color_mode", "rgb")),
-            )
-            ops = [dict(o) for o in ops]
-            ops[0]["file"] = str(session_manager.get_ase_path(session_id))
-
+        # 确认门在建 session 之前：被拒的批量不得产生副作用
         if not confirmed and any(spec.destructive for spec, _ in parsed):
             return Envelope.failure(
                 ErrorCode.CONFIRMATION_REQUIRED,
@@ -1687,16 +1755,26 @@ def register_v2_tools(mcp, session_manager, runner, config):
                 session_id=session_id, mode=config.mode,
             )
 
+        first = ops[0].get("op") if isinstance(ops[0], dict) else None
+        if session_id is None and first in ("create_sprite", "open_sprite") and not dry_run:
+            session_id = session_manager.create_session(
+                width=int(ops[0].get("width", 1)),
+                height=int(ops[0].get("height", 1)),
+                color_mode=str(ops[0].get("color_mode", "rgb")),
+            )
+            ops = [dict(o) for o in ops]
+            ops[0]["file"] = str(session_manager.get_ase_path(session_id))
+
         env = engine.apply(session_id, ops, atomic=atomic, dry_run=dry_run)
 
-        if env.ok and any(spec.name == "close_session" for spec, _ in parsed):
+        if env.ok and not dry_run and any(spec.name == "close_session" for spec, _ in parsed):
             if session_id:
                 session_manager.close_session(session_id)
         return env
 
     @mcp.tool(annotations={"destructiveHint": True, "openWorldHint": False})
-    def run_lua(session_id: str, code: str, unsafe: bool = False) -> Envelope:
-        """执行任意 Lua（逃逸舱）。必须 unsafe=true 显式声明。"""
+    def run_lua(session_id: str, code: str, unsafe: bool = False, confirmed: bool = False) -> Envelope:
+        """执行任意 Lua（逃逸舱）。必须 unsafe=true 且 confirmed=true。"""
         if not unsafe:
             return Envelope.failure(
                 ErrorCode.UNSUPPORTED_IN_MODE,
@@ -1704,7 +1782,13 @@ def register_v2_tools(mcp, session_manager, runner, config):
                 hint="prefer apply_operations; run_lua can break documents",
                 session_id=session_id, mode=config.mode,
             )
-        raise NotImplementedError("implemented in Task 1.8")
+        if not confirmed:
+            return Envelope.failure(
+                ErrorCode.CONFIRMATION_REQUIRED,
+                "run_lua requires confirmed=true",
+                hint="re-call with confirmed=true",
+                session_id=session_id, mode=config.mode,
+            )
 ```
 
 - [ ] **Step 4: 运行测试**
@@ -1800,11 +1884,12 @@ _G._mcp_maybe_save(sprite, file)
                 session_id=session_id, mode=config.mode,
             )
         snippet = work / "_run_lua.lua"
-        snippet.write_text(code, encoding="utf-8")
-        result = runner.run_script("mcp_run_lua.lua", {
-            "file": str(session_manager.get_ase_path(session_id)),
-            "code_path": str(snippet),
-        })
+        with engine.session_lock(session_id):
+            snippet.write_text(code, encoding="utf-8")
+            result = runner.run_script("mcp_run_lua.lua", {
+                "file": str(session_manager.get_ase_path(session_id)),
+                "code_path": str(snippet),
+            })
         if not result["success"]:
             return Envelope.failure(
                 ErrorCode.LUA_RUNTIME_ERROR,
@@ -1818,6 +1903,8 @@ _G._mcp_maybe_save(sprite, file)
                                  data={"stdout": result.get("stdout", "")})],
             changed=True,
         )
+
+    return engine
 ```
 
 - [ ] **Step 5: 运行测试**
@@ -2030,7 +2117,7 @@ git commit -m "fix(v2): safe inspect export on temp copy (P0-1)"
 - Consumes: `scripts/inspect.lua`、PIL、`Engine` 的会话路径
 - Produces:
   - `compute_metrics(png_path: Path, meta: dict) -> dict`，键：`color_count`、`palette`、`near_duplicate_colors`、`bbox`、`coverage`、`semi_transparent_pixels`、`isolated_pixels`、`grid_offset`、`frame_diffs`
-  - `inspect` 返回类型由 Task 0.2 的 `IMAGE_STRUCTURED_MODE` 决定；默认返回 `Image`，并写出 `work/<sid>/metrics.json`（artifact）。
+  - `inspect` 返回 `fastmcp.tools.ToolResult`：`content=[Image]` + `structured_content={"meta":…, "metrics":…}`（Task 0.2 已验证该 API 可用，见 `tests/v2/test_fastmcp_capabilities.py:32-42`），同时写 `work/<sid>/metrics.json`。
 
 - [ ] **Step 1: 写失败测试**
 
@@ -2158,9 +2245,10 @@ def compute_metrics(png_path: Path, meta: dict) -> dict:
 
 ```python
     @mcp.tool(annotations={"readOnlyHint": True, "openWorldHint": False})
-    def inspect(session_id: str, scale: int = 4, view: str = "composite") -> Image:
+    def inspect(session_id: str, scale: int = 4, view: str = "composite") -> ToolResult:
         """返回画布预览与量化指标（只读，永不改动文档）。"""
-        from src.v2 import IMAGE_STRUCTURED_MODE  # noqa: F401
+        from fastmcp.tools import ToolResult
+
         from src.v2.inspect import compute_metrics
 
         try:
@@ -2185,7 +2273,10 @@ def compute_metrics(png_path: Path, meta: dict) -> dict:
             json.dumps({"meta": meta, "metrics": metrics}, ensure_ascii=False, indent=2),
             encoding="utf-8",
         )
-        return Image(path=str(png))
+        return ToolResult(
+            content=[Image(path=str(png))],
+            structured_content={"meta": meta, "metrics": metrics},
+        )
 ```
 
 - [ ] **Step 5: 运行测试**
@@ -2260,3 +2351,5 @@ git commit -m "docs: document v2 three-tool surface"
 ## 附录 B：退役用例记录
 
 Task 1.9 执行时，在此逐条记录被 `pytest.mark.skip(reason="retired in v2")` 的旧测试：`文件::用例 → 原因 → 计划迁移阶段`。
+
+- `tests/test_server.py::test_create_server_registers_tileset_and_quality_tools` → server 不再导入/调用 `register_tileset_tools`/`register_quality_tools`（旧工具注册退役）→ 阶段 3 随旧工具模块一并删除（该用例测的是已退役的 server 注册行为，无迁移价值）。

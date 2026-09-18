@@ -116,4 +116,9 @@ def register_v2_tools(mcp, session_manager, runner, config):
             changed=True,
         )
 
+    @mcp.tool(annotations={"readOnlyHint": True, "openWorldHint": False})
+    def inspect(session_id: str, scale: int = 4) -> Image:
+        """感知画布（占位，Task 2.2 实现）。"""
+        raise NotImplementedError("inspect implemented in Task 2.2")
+
     return engine

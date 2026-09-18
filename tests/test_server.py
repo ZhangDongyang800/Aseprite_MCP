@@ -1,12 +1,27 @@
-"""server.py 工具模块注册测试。
+"""server.py 工具注册测试（v2 三工具面）。
 
-验证 create_server() 会导入并注册所有工具模块（含 Task 13 新增的
-tileset_tools 与 quality_tools）。
+Task 1.9 起 server 只注册 v2 的 apply_operations / run_lua / inspect，
+旧 register_*_tools 不再调用（模块与直接测模块的用例暂留，阶段 3 清理）。
 """
 
+import asyncio
 from unittest.mock import patch
 
+import pytest
 
+EXPECTED_TOOLS = {"apply_operations", "inspect", "run_lua"}
+
+
+def test_v2_tools_registered():
+    """create_server() 只注册 v2 的三个工具。"""
+    from server import create_server
+
+    mcp = create_server()
+    tools = asyncio.run(mcp.list_tools())
+    assert {t.name for t in tools} == EXPECTED_TOOLS
+
+
+@pytest.mark.skip(reason="retired in v2")
 def test_create_server_registers_tileset_and_quality_tools():
     """create_server 应导入并注册 tileset_tools 与 quality_tools 模块。"""
     import server

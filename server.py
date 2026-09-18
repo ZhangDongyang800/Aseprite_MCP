@@ -19,22 +19,7 @@ from fastmcp import FastMCP
 from src.config import Config
 from src.session import SessionManager
 from src.runner import AsepriteRunner, WebSocketRunner
-from src.tools.sprite_tools import register_sprite_tools
-from src.tools.draw_tools import register_draw_tools
-from src.tools.advanced_draw_tools import register_advanced_draw_tools
-from src.tools.inspect_tools import register_inspect_tools
-from src.tools.animation_tools import register_animation_tools
-from src.tools.layer_tools import register_layer_tools
-from src.tools.palette_tools import register_palette_tools
-from src.tools.tag_tools import register_tag_tools
-from src.tools.transform_tools import register_transform_tools
-from src.tools.tileset_tools import register_tileset_tools
-from src.tools.quality_tools import register_quality_tools
-from src.tools.selection_tools import register_selection_tools
-from src.tools.color_adjustment_tools import register_color_adjustment_tools
-from src.tools.filter_tools import register_filter_tools
-from src.tools.batch_tools import register_batch_tools
-from src.tools.import_tools import register_import_tools
+from src.v2.tools import register_v2_tools
 from src.resources import register_resources
 from src.prompts import register_prompts
 
@@ -61,6 +46,7 @@ def create_server() -> FastMCP:
             )
             print("Falling back to CLI mode.", file=sys.stderr)
             runner = AsepriteRunner(config)
+            config.mode = "cli"  # 与 runner 保持一致（spec P0-8）
         else:
             runner = WebSocketRunner(bridge=bridge, config=config)
             print(
@@ -94,24 +80,8 @@ def create_server() -> FastMCP:
     # 创建 FastMCP 服务器
     mcp = FastMCP("AsepriteMCP")
 
-    # 注册工具
-    register_sprite_tools(mcp, session_manager, runner)
-    register_draw_tools(mcp, session_manager, runner)
-    register_advanced_draw_tools(mcp, session_manager, runner)
-    register_inspect_tools(mcp, session_manager, runner)
-    register_animation_tools(mcp, session_manager, runner)
-    register_layer_tools(mcp, session_manager, runner)
-    register_palette_tools(mcp, session_manager, runner)
-    register_tag_tools(mcp, session_manager, runner)
-    register_transform_tools(mcp, session_manager, runner)
-    register_tileset_tools(mcp, session_manager, runner)
-    register_quality_tools(mcp, session_manager, runner)
-    # New: selection, color adjustment, filter, batch tools
-    register_selection_tools(mcp, session_manager, runner)
-    register_color_adjustment_tools(mcp, session_manager, runner)
-    register_filter_tools(mcp, session_manager, runner)
-    register_batch_tools(mcp, session_manager, runner)
-    register_import_tools(mcp, session_manager, runner)
+    # 注册工具（v2 三工具面；旧 register_*_tools 已退役，模块暂留待阶段 3 清理）
+    register_v2_tools(mcp, session_manager, runner, config)
 
     # 注册资源
     register_resources(mcp, session_manager)

@@ -1,0 +1,46 @@
+-- inspect.lua：只读感知。永远在临时副本上缩放/导出（修 P0-1）。
+if not _G._mcp_common_loaded then
+    local d = debug.getinfo(1, "S").source:match("@(.*[/\\])")
+    if d then pcall(dofile, d .. "mcp_common.lua") end
+end
+
+local file = app.params["file"]
+local output = app.params["output"]
+local scale = tonumber(app.params["scale"] or "4")
+local view = app.params["view"] or "composite"
+
+if not output then error("output is required") end
+
+local sprite = _G._mcp_get_sprite(file)
+if not sprite then error("no sprite. Call create_sprite first.") end
+
+local layers = {}
+for i, layer in ipairs(sprite.layers) do
+    layers[i] = {name = layer.name, visible = layer.isVisible, opacity = layer.opacity}
+end
+local frames = {}
+for i, frame in ipairs(sprite.frames) do
+    frames[i] = {number = i, duration = frame.duration}
+end
+local palette = {}
+for i = 0, #sprite.palettes[1] - 1 do
+    local c = sprite.palettes[1]:getColor(i)
+    palette[i + 1] = string.format("#%02X%02X%02X", c.red, c.green, c.blue)
+end
+local tags = {}
+for i, tag in ipairs(sprite.tags) do
+    tags[i] = {name = tag.name, from = tag.fromFrame.frameNumber, to = tag.toFrame.frameNumber}
+end
+
+-- 临时副本：缩放与导出都不触碰原文档
+local preview = Sprite(sprite)
+if scale > 1 then
+    preview:resize(preview.width * scale, preview.height * scale)
+end
+preview:saveCopyAs(output)
+preview:close()
+
+print(json.encode({
+    width = sprite.width, height = sprite.height,
+    frames = frames, layers = layers, palette = palette, tags = tags, view = view,
+}))

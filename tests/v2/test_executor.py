@@ -112,6 +112,32 @@ def test_redo_without_backup_is_honest(engine):
     assert env.error.code == ErrorCode.NO_MORE_REDO
 
 
+def test_new_mutating_apply_clears_redo(engine):
+    eng, sm, _ = engine
+    sid = sm.create_session(8, 8)
+    _make_ase(sm, sid)
+    assert eng.apply(sid, [{"op": "draw_pixel", "x": 1, "y": 1, "color": "#FF0000"}]).ok is True
+    assert eng.undo(sid).ok is True
+    work = sm.get_work_dir(sid)
+    assert (work / "redo_backup.ase").exists()
+
+    assert eng.apply(sid, [{"op": "draw_pixel", "x": 2, "y": 2, "color": "#00FF00"}]).ok is True
+    assert not (work / "redo_backup.ase").exists()
+    env = eng.redo(sid)
+    assert env.ok is False
+    assert env.error.code == ErrorCode.NO_MORE_REDO
+
+
+def test_undo_redo_unknown_session_returns_envelope(engine):
+    eng, sm, _ = engine
+    env = eng.undo("does-not-exist")
+    assert env.ok is False
+    assert env.error.code == ErrorCode.SESSION_NOT_FOUND
+    env = eng.redo("does-not-exist")
+    assert env.ok is False
+    assert env.error.code == ErrorCode.SESSION_NOT_FOUND
+
+
 def test_live_undo_redo_use_native_without_backups(tmp_path):
     config = Config()
     config.work_dir = tmp_path

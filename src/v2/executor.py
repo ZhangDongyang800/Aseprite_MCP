@@ -52,8 +52,11 @@ class Engine:
 
     def undo(self, session_id) -> Envelope:
         with self._lock(session_id):
-            work = self.session_manager.get_work_dir(session_id)
-            path = self.session_manager.get_ase_path(session_id)
+            try:
+                work = self.session_manager.get_work_dir(session_id)
+                path = self.session_manager.get_ase_path(session_id)
+            except KeyError:
+                return self._missing(session_id)
             if self.config.mode != "cli":
                 return self._native("undo", session_id)
             backup = work / BACKUP_NAME
@@ -70,8 +73,11 @@ class Engine:
 
     def redo(self, session_id) -> Envelope:
         with self._lock(session_id):
-            work = self.session_manager.get_work_dir(session_id)
-            path = self.session_manager.get_ase_path(session_id)
+            try:
+                work = self.session_manager.get_work_dir(session_id)
+                path = self.session_manager.get_ase_path(session_id)
+            except KeyError:
+                return self._missing(session_id)
             redo_backup = work / REDO_NAME
             if self.config.mode == "cli" and not redo_backup.exists():
                 return Envelope.failure(
@@ -79,7 +85,8 @@ class Engine:
                     session_id=session_id, mode=self.config.mode,
                 )
             if self.config.mode == "cli":
-                shutil.copy2(path, work / BACKUP_NAME)
+                if path.exists():
+                    shutil.copy2(path, work / BACKUP_NAME)
                 shutil.copy2(redo_backup, path)
                 redo_backup.unlink()
                 return self._ok(session_id, "redo")
@@ -89,6 +96,12 @@ class Engine:
 
     def _undo_mode(self) -> str:
         return "file_backup" if self.config.mode == "cli" else "transaction"
+
+    def _missing(self, session_id) -> Envelope:
+        return Envelope.failure(
+            ErrorCode.SESSION_NOT_FOUND, f"session not found: {session_id}",
+            session_id=session_id, mode=self.config.mode,
+        )
 
     def _ok(self, session_id, action: str) -> Envelope:
         return Envelope(
@@ -116,14 +129,13 @@ class Engine:
             work = session.get_work_dir(session_id)
             path = session.get_ase_path(session_id)
         except KeyError:
-            return Envelope.failure(
-                ErrorCode.SESSION_NOT_FOUND, f"session not found: {session_id}",
-                session_id=session_id, mode=self.config.mode,
-            )
+            return self._missing(session_id)
 
         mutating = any(spec.mutating for spec, _ in parsed)
-        if mutating and self.config.mode == "cli" and path.exists():
-            shutil.copy2(path, work / BACKUP_NAME)
+        if mutating and self.config.mode == "cli":
+            (work / REDO_NAME).unlink(missing_ok=True)
+            if path.exists():
+                shutil.copy2(path, work / BACKUP_NAME)
 
         source = compile_ops(
             [(s, p) for s, p in parsed if s.lua],

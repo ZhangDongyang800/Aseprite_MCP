@@ -25,7 +25,7 @@ def lua_string(s: str) -> str:
         elif ch == "\t":
             out.append("\\t")
         elif code < 32 or code == 127:
-            out.append(f"\\{code}")
+            out.append(f"\\x{code:02x}")
         else:
             out.append(ch)
     out.append('"')

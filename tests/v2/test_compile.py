@@ -21,8 +21,13 @@ def _spec():
 def test_lua_string_escapes_control_and_quotes():
     assert lua_string('a"b') == '"a\\"b"'
     assert lua_string("a\nb") == '"a\\nb"'
-    assert lua_string("a\x01b") == '"a\\1b"'
+    assert lua_string("a\x01b") == '"a\\x01b"'
     assert lua_string("中文") == '"中文"'
+
+
+def test_lua_string_control_escape_is_unambiguous():
+    assert lua_string("a\x012b") == '"a\\x012b"'
+    assert lua_string("\x1b" + "3") == '"\\x1b3"'
 
 
 def test_lua_value_nested():

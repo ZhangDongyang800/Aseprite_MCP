@@ -21,6 +21,28 @@ def test_apply_operations_unknown_op(tools):
     assert env.error.code == ErrorCode.INVALID_ARGS
 
 
+def test_apply_operations_rejects_unknown_param(tools):
+    captured, sm, _ = tools
+    sid = sm.create_session(8, 8)
+    env = captured["apply_operations"](session_id=sid, ops=[
+        {"op": "draw_rect", "x": 0, "y": 0, "width": 2, "height": 2,
+         "color": "#FF0000", "colur": "#00FF00"}
+    ])
+    assert env.ok is False
+    assert env.error.code == ErrorCode.INVALID_ARGS
+
+
+def test_create_sprite_rejects_misspelled_param(tools):
+    captured, sm, _ = tools
+    before = len(sm.list_sessions())
+    env = captured["apply_operations"](ops=[
+        {"op": "create_sprite", "width": 8, "height": 8, "widht": 8}
+    ])
+    assert env.ok is False
+    assert env.error.code == ErrorCode.INVALID_ARGS
+    assert len(sm.list_sessions()) == before
+
+
 def test_apply_operations_missing_session(tools):
     captured, _, _ = tools
     env = captured["apply_operations"](session_id="missing", ops=[

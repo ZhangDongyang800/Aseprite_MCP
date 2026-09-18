@@ -11,6 +11,7 @@ local scale = tonumber(app.params["scale"] or "4") or 4
 local view = app.params["view"] or "composite"
 
 if not output then error("output is required") end
+if not metrics_output or metrics_output == "" then error("metrics_output is required") end
 
 local sprite = _G._mcp_get_sprite(file)
 if not sprite then error("no sprite. Call create_sprite first.") end

@@ -28,6 +28,11 @@ def test_inspect_lua_scale_param_fallback():
     assert 'tonumber(app.params["scale"] or "4") or 4' in text
 
 
+def test_inspect_lua_requires_metrics_output():
+    text = (SCRIPTS / "inspect.lua").read_text(encoding="utf-8")
+    assert 'error("metrics_output is required")' in text
+
+
 def test_inspect_lua_metrics_copy_precedes_recolour_and_resize():
     text = (SCRIPTS / "inspect.lua").read_text(encoding="utf-8")
     metrics_idx = text.index("preview:saveCopyAs(metrics_output)")

@@ -2,7 +2,6 @@ import json
 from pathlib import Path
 from unittest.mock import MagicMock
 
-import pytest
 from fastmcp.tools import ToolResult
 from PIL import Image as PILImage
 
@@ -73,7 +72,9 @@ def test_inspect_calls_script_with_session_path_and_writes_preview(tools):
     assert (work / "preview.png").exists()
     assert (work / "metrics_src.png").exists()
     assert isinstance(result, ToolResult)
+    assert result.is_error is False
     assert result.content[0].type == "image"
+    assert result.structured_content["ok"] is True
     assert result.structured_content["meta"] == META
     # 指标必须来自 scale=1 的 metrics_src.png，而不是放大后的 preview.png
     metrics = result.structured_content["metrics"]
@@ -83,7 +84,7 @@ def test_inspect_calls_script_with_session_path_and_writes_preview(tools):
     assert metrics["bbox"] == {"x": 0, "y": 0, "width": 1, "height": 1}
     assert metrics["coverage"] == 1 / 4
     saved = json.loads((work / "metrics.json").read_text(encoding="utf-8"))
-    assert saved == result.structured_content
+    assert saved == {"meta": META, "metrics": metrics}
 
 
 def test_inspect_uses_metrics_output_param(tools):
@@ -137,8 +138,13 @@ def test_inspect_holds_session_lock(tools):
 
 def test_inspect_unknown_session(tools):
     captured, _, _ = tools
-    with pytest.raises(ValueError, match="session not found"):
-        captured["inspect"](session_id="missing")
+    result = captured["inspect"](session_id="missing")
+
+    assert result.is_error is True
+    assert result.structured_content["ok"] is False
+    assert result.structured_content["error"]["code"] == "session_not_found"
+    assert "session not found" in result.structured_content["error"]["message"]
+    assert any("session not found" in getattr(block, "text", "") for block in result.content)
 
 
 def test_inspect_runner_failure(tools):
@@ -146,5 +152,9 @@ def test_inspect_runner_failure(tools):
     sid = sm.create_session(2, 2)
     runner.run_script.return_value = {"success": False, "error": "boom"}
 
-    with pytest.raises(RuntimeError, match="boom"):
-        captured["inspect"](session_id=sid)
+    result = captured["inspect"](session_id=sid)
+
+    assert result.is_error is True
+    assert result.structured_content["ok"] is False
+    assert result.structured_content["error"]["code"] == "script_error"
+    assert result.structured_content["error"]["message"] == "boom"

@@ -4,7 +4,6 @@ import contextlib
 import shutil
 import threading
 import time
-from pathlib import Path
 
 from src.v2.compile import compile_ops, parse_result_stdout
 from src.v2.registry import REGISTRY
@@ -126,6 +125,14 @@ class Engine:
             return Envelope.failure(
                 ErrorCode.LUA_RUNTIME_ERROR,
                 result.get("error", f"{action} failed"),
+                session_id=session_id, mode=self.config.mode,
+            )
+        stdout = (result.get("stdout") or "").strip()
+        if not stdout.startswith("OK"):
+            return Envelope.failure(
+                ErrorCode.LUA_RUNTIME_ERROR,
+                stdout or f"{action} produced no confirmation",
+                hint="nothing to undo/redo, or Aseprite rejected the command",
                 session_id=session_id, mode=self.config.mode,
             )
         return self._ok(session_id, action)

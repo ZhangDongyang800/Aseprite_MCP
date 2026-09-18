@@ -3,7 +3,7 @@
 from enum import Enum
 from typing import Optional
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 from src.v2.registry import OpSpec, REGISTRY
 
@@ -15,6 +15,8 @@ class ColorMode(str, Enum):
 
 
 class CreateSprite(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
     width: int = Field(ge=1, le=4096)
     height: int = Field(ge=1, le=4096)
     color_mode: ColorMode = ColorMode.rgb
@@ -22,16 +24,20 @@ class CreateSprite(BaseModel):
 
 
 class OpenSprite(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
     path: str
     file: Optional[str] = None
 
 
 class SaveSprite(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
     path: Optional[str] = None
 
 
 class CloseSession(BaseModel):
-    pass
+    model_config = ConfigDict(extra="forbid")
 
 
 def register() -> None:

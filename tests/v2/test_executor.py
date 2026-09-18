@@ -152,3 +152,38 @@ def test_live_undo_redo_use_native_without_backups(tmp_path):
     assert eng.undo(sid).ok is True
     assert eng.redo(sid).ok is True
     assert runner.run_script.call_count == 2
+
+
+def test_live_undo_redo_ok_stdout_is_success(tmp_path):
+    config = Config()
+    config.work_dir = tmp_path
+    config.mode = "ws"
+    sm = SessionManager(config)
+    runner = MagicMock()
+    runner.run_script.return_value = {"success": True, "stdout": "OK: undo\n", "stderr": ""}
+    eng = Engine(sm, runner, config)
+    sid = sm.create_session(8, 8)
+    _make_ase(sm, sid)
+
+    assert eng.undo(sid).ok is True
+    assert eng.redo(sid).ok is True
+
+
+@pytest.mark.parametrize("stdout", ["ERROR: no active sprite", ""])
+def test_live_undo_redo_error_stdout_is_failure(tmp_path, stdout):
+    config = Config()
+    config.work_dir = tmp_path
+    config.mode = "ws"
+    sm = SessionManager(config)
+    runner = MagicMock()
+    runner.run_script.return_value = {"success": True, "stdout": stdout, "stderr": ""}
+    eng = Engine(sm, runner, config)
+    sid = sm.create_session(8, 8)
+    _make_ase(sm, sid)
+
+    undo_env = eng.undo(sid)
+    assert undo_env.ok is False
+    assert undo_env.error.code == ErrorCode.LUA_RUNTIME_ERROR
+    redo_env = eng.redo(sid)
+    assert redo_env.ok is False
+    assert redo_env.error.code == ErrorCode.LUA_RUNTIME_ERROR

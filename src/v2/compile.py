@@ -1,6 +1,7 @@
 """把 ops[] 编译成一段 Lua 程序（spec §6.2）。"""
 
 import json
+import re
 from pathlib import Path
 
 from pydantic import BaseModel
@@ -8,6 +9,14 @@ from pydantic import BaseModel
 from src.v2.registry import OpSpec
 
 RESULT_MARKER = "__MCP_JSON__"
+
+_LUA_IDENT = re.compile(r"[A-Za-z_][A-Za-z0-9_]*")
+
+_LUA_KEYWORDS = frozenset({
+    "and", "break", "do", "else", "elseif", "end", "false", "for", "function",
+    "goto", "if", "in", "local", "nil", "not", "or", "repeat", "return",
+    "then", "true", "until", "while",
+})
 
 
 def lua_string(s: str) -> str:
@@ -50,7 +59,11 @@ def lua_value(v) -> str:
     if isinstance(v, dict):
         parts = []
         for k, val in v.items():
-            if isinstance(k, str) and k.isidentifier():
+            if (
+                isinstance(k, str)
+                and _LUA_IDENT.fullmatch(k) is not None
+                and k not in _LUA_KEYWORDS
+            ):
                 parts.append(f"{k}={lua_value(val)}")
             else:
                 parts.append(f"[{lua_value(k)}]={lua_value(val)}")

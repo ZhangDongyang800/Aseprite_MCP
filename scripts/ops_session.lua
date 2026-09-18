@@ -21,8 +21,12 @@ function _G._mcp_op_save_sprite(sprite, params)
         sprite:saveAs(params.path)
         return {saved = true, path = params.path}
     end
+    local name = sprite.filename
+    if not name or name == "" then
+        error("no filename; pass path=... to save_sprite")
+    end
     sprite:save()
-    return {saved = (sprite.filename ~= nil and sprite.filename ~= ""), path = sprite.filename or ""}
+    return {saved = true, path = sprite.filename}
 end
 
 function _G._mcp_op_open_sprite(sprite, params)

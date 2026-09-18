@@ -1,8 +1,6 @@
 """绘制 op 定义（第一批）。"""
 
-from typing import Optional
-
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 from src.v2.registry import OpSpec, REGISTRY
 
@@ -10,6 +8,8 @@ _HEX = r"^#[0-9A-Fa-f]{6}$"
 
 
 class _Targeted(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
     layer: int = Field(default=1, ge=1)
     frame: int = Field(default=1, ge=1)
 

@@ -128,7 +128,15 @@ def register_v2_tools(mcp, session_manager, runner, config):
             work = session_manager.get_work_dir(session_id)
             ase = session_manager.get_ase_path(session_id)
         except KeyError:
-            raise ValueError(f"session not found: {session_id}")
+            message = f"session not found: {session_id}"
+            return ToolResult(
+                content=[message],
+                structured_content={
+                    "ok": False,
+                    "error": {"code": "session_not_found", "message": message},
+                },
+                is_error=True,
+            )
 
         png = work / "preview.png"
         metrics_png = work / "metrics_src.png"
@@ -139,7 +147,15 @@ def register_v2_tools(mcp, session_manager, runner, config):
                 "scale": str(scale), "view": view,
             })
             if not result["success"]:
-                raise RuntimeError(result.get("error", "inspect failed"))
+                message = result.get("error", "inspect failed")
+                return ToolResult(
+                    content=[message],
+                    structured_content={
+                        "ok": False,
+                        "error": {"code": "script_error", "message": message},
+                    },
+                    is_error=True,
+                )
 
             meta = json.loads(result["stdout"].strip().splitlines()[-1])
             metrics = compute_metrics(metrics_png, meta)
@@ -150,7 +166,7 @@ def register_v2_tools(mcp, session_manager, runner, config):
             image = Image(path=str(png))
         return ToolResult(
             content=[image],
-            structured_content={"meta": meta, "metrics": metrics},
+            structured_content={"ok": True, "meta": meta, "metrics": metrics},
         )
 
     return engine

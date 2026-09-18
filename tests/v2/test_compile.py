@@ -35,6 +35,13 @@ def test_lua_value_nested():
     assert lua_value({"not ident": "x"}) == '{["not ident"]="x"}'
 
 
+def test_lua_value_quotes_lua_keywords_and_non_ascii_keys():
+    assert lua_value({"end": 1}) == '{["end"]=1}'
+    assert lua_value({"nil": 1}) == '{["nil"]=1}'
+    assert lua_value({"中": 1}) == '{["中"]=1}'
+    assert lua_value({"_ok1": 2}) == "{_ok1=2}"
+
+
 def test_compile_contains_single_transaction_and_literal():
     spec = _spec()
     params = _P(x=3, color="#FF0000")

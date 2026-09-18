@@ -40,6 +40,15 @@ def register_v2_tools(mcp, session_manager, runner, config):
                 session_id=session_id, mode=config.mode,
             )
 
+        # 确认门在建 session 之前：被拒的批量不得产生副作用
+        if not confirmed and any(spec.destructive for spec, _ in parsed):
+            return Envelope.failure(
+                ErrorCode.CONFIRMATION_REQUIRED,
+                "batch contains destructive ops",
+                hint="re-call with confirmed=true",
+                session_id=session_id, mode=config.mode,
+            )
+
         first = ops[0].get("op") if isinstance(ops[0], dict) else None
         if not dry_run and session_id is None and first in ("create_sprite", "open_sprite"):
             session_id = session_manager.create_session(
@@ -49,14 +58,6 @@ def register_v2_tools(mcp, session_manager, runner, config):
             )
             ops = [dict(o) for o in ops]
             ops[0]["file"] = str(session_manager.get_ase_path(session_id))
-
-        if not confirmed and any(spec.destructive for spec, _ in parsed):
-            return Envelope.failure(
-                ErrorCode.CONFIRMATION_REQUIRED,
-                "batch contains destructive ops",
-                hint="re-call with confirmed=true",
-                session_id=session_id, mode=config.mode,
-            )
 
         env = engine.apply(session_id, ops, atomic=atomic, dry_run=dry_run)
 

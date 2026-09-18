@@ -59,3 +59,15 @@ def test_dry_run_does_not_close_session(tools):
     )
     assert env.ok is True
     assert sid in [s["session_id"] for s in sm.list_sessions()]
+
+
+def test_unconfirmed_destructive_batch_does_not_create_session(tools):
+    captured, sm, _ = tools
+    before = len(sm.list_sessions())
+    env = captured["apply_operations"](ops=[
+        {"op": "create_sprite", "width": 8, "height": 8},
+        {"op": "clear_canvas"},
+    ], confirmed=False)
+    assert env.ok is False
+    assert env.error.code == ErrorCode.CONFIRMATION_REQUIRED
+    assert len(sm.list_sessions()) == before

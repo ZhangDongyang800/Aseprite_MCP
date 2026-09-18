@@ -2,7 +2,8 @@
 
 from typing import Optional
 
-from fastmcp.utilities.types import Image  # noqa: F401  (inspect 在 Task 2.2 使用)
+from fastmcp.tools import ToolResult
+from fastmcp.utilities.types import Image
 
 import src.v2.ops  # noqa: F401  触发内置 op 注册
 from src.v2.executor import Engine
@@ -117,8 +118,36 @@ def register_v2_tools(mcp, session_manager, runner, config):
         )
 
     @mcp.tool(annotations={"readOnlyHint": True, "openWorldHint": False})
-    def inspect(session_id: str, scale: int = 4) -> Image:
-        """感知画布（占位，Task 2.2 实现）。"""
-        raise NotImplementedError("inspect implemented in Task 2.2")
+    def inspect(session_id: str, scale: int = 4, view: str = "composite") -> ToolResult:
+        """返回画布预览与量化指标（只读，永不改动文档）。"""
+        import json
+
+        from src.v2.inspect import compute_metrics
+
+        try:
+            work = session_manager.get_work_dir(session_id)
+            ase = session_manager.get_ase_path(session_id)
+        except KeyError:
+            raise ValueError(f"session not found: {session_id}")
+
+        png = work / "preview.png"
+        with engine.session_lock(session_id):
+            result = runner.run_script("inspect.lua", {
+                "file": str(ase), "output": str(png),
+                "scale": str(scale), "view": view,
+            })
+        if not result["success"]:
+            raise RuntimeError(result.get("error", "inspect failed"))
+
+        meta = json.loads(result["stdout"].strip().splitlines()[-1])
+        metrics = compute_metrics(png, meta)
+        (work / "metrics.json").write_text(
+            json.dumps({"meta": meta, "metrics": metrics}, ensure_ascii=False, indent=2),
+            encoding="utf-8",
+        )
+        return ToolResult(
+            content=[Image(path=str(png))],
+            structured_content={"meta": meta, "metrics": metrics},
+        )
 
     return engine

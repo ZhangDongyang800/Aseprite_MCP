@@ -15,3 +15,14 @@ def test_inspect_never_resizes_source():
 def test_inspect_prints_json_marker():
     text = (SCRIPTS / "inspect.lua").read_text(encoding="utf-8")
     assert "json.encode" in text
+
+
+def test_inspect_lua_supports_silhouette():
+    text = (SCRIPTS / "inspect.lua").read_text(encoding="utf-8")
+    assert 'view == "silhouette"' in text
+    assert "pixelColor.rgbaA" in text
+
+
+def test_inspect_lua_scale_param_fallback():
+    text = (SCRIPTS / "inspect.lua").read_text(encoding="utf-8")
+    assert 'tonumber(app.params["scale"] or "4") or 4' in text

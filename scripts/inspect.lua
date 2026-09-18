@@ -6,7 +6,7 @@ end
 
 local file = app.params["file"]
 local output = app.params["output"]
-local scale = tonumber(app.params["scale"] or "4")
+local scale = tonumber(app.params["scale"] or "4") or 4
 local view = app.params["view"] or "composite"
 
 if not output then error("output is required") end
@@ -34,6 +34,25 @@ end
 
 -- 临时副本：缩放与导出都不触碰原文档
 local preview = Sprite(sprite)
+
+-- silhouette 视图：把副本上所有非透明像素涂黑（仅改副本）
+if view == "silhouette" then
+    local black = app.pixelColor.rgba(0, 0, 0, 255)
+    for _, layer in ipairs(preview.layers) do
+        for _, cel in ipairs(layer.cels) do
+            local img = cel.image
+            for y = 0, img.height - 1 do
+                for x = 0, img.width - 1 do
+                    local c = img:getPixel(x, y)
+                    if app.pixelColor.rgbaA(c) > 0 then
+                        img:drawPixel(x, y, black)
+                    end
+                end
+            end
+        end
+    end
+end
+
 if scale > 1 then
     preview:resize(preview.width * scale, preview.height * scale)
 end

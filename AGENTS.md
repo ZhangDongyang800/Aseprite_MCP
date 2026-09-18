@@ -30,7 +30,8 @@ src/v2/registry.py   REGISTRY (OpRegistry): single source of truth — OpSpec = 
                      Pydantic params / lua function / mutating+destructive flags; validate() + catalog()
 src/v2/compile.py    ops[] -> one generated Lua program; prints one JSON line after __MCP_JSON__
 src/v2/executor.py   Engine: per-session lock, CLI file backup, atomic apply, dry_run, undo/redo
-src/v2/result.py     Envelope / OpResult / stable ErrorCode — every tool returns an Envelope
+src/v2/result.py     Envelope / OpResult / stable ErrorCode — returned by apply_operations and
+                     run_lua; inspect instead returns a fastmcp ToolResult
 src/v2/inspect.py    metrics computed from the scale-1 exported PNG (palette, bbox, coverage, ...)
 src/v2/tools.py      register_v2_tools(): apply_operations, inspect, run_lua
 src/v2/ops/          built-in op definitions: draw_ops.py, session_ops.py (imported by __init__.py)
@@ -55,7 +56,7 @@ extension/main.lua   Aseprite extension; connects as WebSocket client, dofiles s
 - `AsepriteRunner` forces `encoding="utf-8"` with a 30s timeout (Windows GBK would otherwise corrupt JSON output).
 - v2 batch output is one JSON line after the `__MCP_JSON__` marker, parsed by `parse_result_stdout` (`src/v2/compile.py`); `inspect.lua` prints its metadata JSON on the last stdout line.
 - `run_lua` writes the snippet to `<work>/_run_lua.lua` and runs it under the same per-session lock as `apply_operations`/`inspect` (`Engine.session_lock`).
-- CLI undo is a single-step file copy (`work/<uuid>/undo_backup.ase`); redo only works in Live mode.
+- CLI undo/redo are single-step file swaps (`work/<uuid>/undo_backup.ase` / `redo_backup.ase`); Live mode uses Aseprite's native history.
 
 ## Adding an op
 

@@ -33,7 +33,7 @@
 
 - [ 如何使用](#-如何使用)
 - [ 实时模式（可选，WebSocket）](#-实时模式可选-websocket)
-- [ 功能介绍](#-功能介绍)
+- [工具](#工具)
 - [ 示例演示](#-示例演示)
 - [ 参与贡献](#-参与贡献)
 - [ 开源协议](#-开源协议)
@@ -183,148 +183,37 @@ MCP 服务器运行后，打开 Aseprite 并点击：
 
 | 变量 | 默认值 | 说明 |
 |----------|---------|-------------|
+| `ASEPRITE_PATH` | 自动检测 | Aseprite 可执行文件路径（优先于 `PATH` 与常见安装位置的自动检测） |
 | `ASEPRITE_MCP_MODE` | `cli` | 执行模式：`cli` 或 `ws` |
 | `ASEPRITE_WS_HOST` | `127.0.0.1` | WebSocket 服务器绑定地址 |
 | `ASEPRITE_WS_PORT` | `9001` | WebSocket 服务器端口 |
 
 ---
 
-##  功能介绍
+## 工具
 
-让 AI 像人类画师一样在 Aseprite 中创作像素画——支持完整的工作流，包括像素级绘制、多图层管理、动画帧编辑、调色板控制、动画标签、图像变换和画布预览。共 **49 个工具**。
-
-###  像素级绘制
-
-所有绘制工具都支持 `layer` 和 `frame` 参数，可在指定图层和帧上绘制（默认：图层 1，帧 1）。
+服务器只暴露三个 MCP 工具：
 
 | 工具 | 说明 |
-|------|-------------|
-| `draw_pixel` | 在指定坐标绘制一个像素 |
-| `draw_line` | 绘制一条直线 |
-| `draw_rect` | 绘制矩形（描边 / 填充） |
-| `draw_ellipse` | 绘制椭圆（描边 / 填充） |
-| `fill_region` | 油漆桶填充连通区域 |
-| `clear_region` | 清除区域为透明 |
-| `clear_canvas` | 清空整个画布 |
+|------|------|
+| `apply_operations` | 在单个事务中执行一批 op——唯一的变更入口。传入 `session_id` + `ops[]`；`dry_run=true` 只校验、不产生副作用；批次包含破坏性 op（`clear_canvas`、`close_session`）时必须传 `confirmed=true`。省略 `session_id` 且首个 op 为 `create_sprite` / `open_sprite` 时会自动创建会话。 |
+| `inspect` | 只读感知：返回画布预览图与量化指标（调色板、颜色数、包围盒、覆盖率、半透明与孤立像素）。永不修改文档。 |
+| `run_lua` | 逃逸舱：执行任意 Lua。需要 `unsafe=true` 且 `confirmed=true`。 |
 
-###  精灵管理
+op 是注册在 `src/v2/ops/` 中的命名操作（Pydantic 参数模型），其 Lua 实现位于 `scripts/ops_*.lua`。内置 op：`create_sprite`、`open_sprite`、`save_sprite`、`close_session`、`draw_pixel`、`draw_rect`、`fill_region`、`clear_canvas`。
 
-| 工具 | 说明 |
-|------|-------------|
-| `create_sprite` | 创建新画布（支持 `rgb` / `grayscale` / `indexed` 模式） |
-| `open_sprite` | 打开已有的 `.ase` 或 `.png` 文件 |
-| `save_sprite` | 保存为 `.ase` / `.png` / `.gif` |
-| `close_session` | 关闭会话并清理临时资源 |
-| `import_png` | ★推荐★ 从 PNG 文件导入图像——画任意图形的最省 token 方式。两种模式：`new`（从 PNG 创建新会话，自动读取真实尺寸）/ `stamp`（将 PNG 贴到已有会话的指定图层/帧/偏移位置）。推荐工作流：用 Python/PIL 生成 PNG，调用 `import_png(mode="new")` 导入，再用 `draw_pixel` / `draw_rect` 等精修。 |
+```python
+apply_operations(ops=[
+    {"op": "create_sprite", "width": 32, "height": 32},
+    {"op": "draw_rect", "x": 4, "y": 4, "width": 24, "height": 24, "color": "#E74C3C", "filled": True},
+    {"op": "draw_pixel", "x": 16, "y": 6, "color": "#FFFFFF"},
+])
+```
 
-###  动画与帧
-
-| 工具 | 说明 |
-|------|-------------|
-| `add_frame` | 添加新帧（复制上一帧或创建空帧） |
-| `remove_frame` | 删除指定帧 |
-| `set_frame_duration` | 设置帧持续时间（秒） |
-| `get_frame_info` | 获取所有帧信息（数量、每帧时长） |
-| `export_gif` | 导出 GIF 动画（支持缩放） |
-| `export_sprite_sheet` | 导出精灵表（PNG + JSON 数据） |
-
-###  图层管理
-
-| 工具 | 说明 |
-|------|-------------|
-| `add_layer` | 创建新图层 |
-| `remove_layer` | 删除图层（按名称或索引） |
-| `set_layer_properties` | 设置图层属性（名称、可见性、不透明度、混合模式） |
-| `get_layer_info` | 获取所有图层信息 |
-| `move_cel` | 在图层/帧之间移动 cel |
-
-###  调色板
-
-| 工具 | 说明 |
-|------|-------------|
-| `set_palette_color` | 设置指定调色板索引处的颜色 |
-| `get_palette` | 获取当前调色板的所有颜色 |
-| `resize_palette` | 调整调色板大小（颜色数量） |
-| `load_palette` | 从文件加载调色板（`.gpl` / `.pal` / `.png`） |
-
-###  动画标签
-
-| 工具 | 说明 |
-|------|-------------|
-| `add_tag` | 创建动画标签（支持播放方向、循环次数） |
-| `remove_tag` | 按名称删除标签 |
-| `get_tags` | 获取所有标签信息 |
-
-###  图像变换
-
-| 工具 | 说明 |
-|------|-------------|
-| `flip_canvas` | 翻转画布（水平 / 垂直） |
-| `resize_sprite` | 调整精灵尺寸 |
-| `rotate_canvas` | 旋转画布（90° / 180° / 270°） |
-| `crop_sprite` | 将精灵裁剪到指定区域 |
-| `invert_color` | 反转所有颜色 |
-| `replace_color` | 替换指定颜色 |
-
-###  调色板增强
-
-| 工具 | 说明 |
-|------|-------------|
-| `apply_preset_palette` | ★批量★ 应用内置预设调色板（db16/db32/aap64/nes/gameboy） |
-| `derive_shading_palette` | 从基础色派生三阶阴影调色板（含色相偏移，默认自动应用） |
-| `append_palette_colors` | ★批量★ 向调色板追加多个颜色 |
-
-###  动画辅助
-
-| 工具 | 说明 |
-|------|-------------|
-| `apply_timing_preset` | ★批量★ 按动画类型批量设置帧持续时间 |
-| `draw_animation_frames` | ★批量★ 一次调用绘制多个动画帧 |
-| `export_onion_skin_preview` | 洋葱皮叠加预览（对比相邻帧） |
-
-###  瓦片集工具
-
-| 工具 | 说明 |
-|------|-------------|
-| `create_tileset_canvas` | 创建瓦片集画布并设置网格 |
-| `export_tiled_preview` | 平铺布局预览（接缝检查） |
-
-###  质量检查
-
-| 工具 | 说明 |
-|------|-------------|
-| `export_silhouette` | 导出纯黑剪影（剪影测试） |
-| `check_canvas_standards` | 自动检查画布标准（尺寸 / 颜色 / 帧时长 / 像素画规范） |
-
-###  画布检查
-
-| 工具 | 说明 |
-|------|-------------|
-| `get_canvas_preview` | 导出 PNG 供 AI 视觉分析（**核心迭代工具**） |
-| `get_canvas_info` | 获取画布元数据（尺寸、颜色模式等） |
-| `get_pixel_color` | 查询指定坐标处像素的颜色 |
-
-###  其他能力
-
-- **MCP 资源** — 会话列表、默认调色板、画布元数据、混合模式列表、动画方向列表
-- **MCP 提示词** — 精灵创建指南、迭代审查指南、动画创建指南、多图层工作流指南
+所有绘制 op 都接受 `layer` / `frame`（从 1 开始计数，默认 1/1）。一批 op 在单个 `app.transaction` 中执行，因此默认的 `atomic=true` 会在任意 op 失败时回滚整批。
 
 > [!TIP]
-> `get_canvas_preview` 是工作流的核心：绘制后，AI 调用它来"看到"画布、分析它，并决定是否修正，形成 **绘制 → 预览 → 分析 → 修正** 的循环。
-
-<br>
-
-<div align="center">
-
-**CLI 模式数据流**（默认）
-
-```
-AI 请求 → MCP 工具调用 → FastMCP (Python) → Aseprite CLI → Lua 脚本 → .ase 文件
-                                                                    ↓
-AI 视觉分析 ← base64 PNG ← Image 对象 ← FastMCP ← export_png.lua ←─┘
-```
-
-</div>
+> `inspect` 是工作流的核心：绘制后，AI 调用它来"看到"画布、分析它，并决定是否修正，形成 **操作 → 检查 → 分析 → 修正** 的循环。
 
 ---
 
@@ -353,35 +242,6 @@ AI 视觉分析 ← base64 PNG ← Image 对象 ← FastMCP ← export_png.lua �
 **AI 提示词：**
 
 > 使用 Aseprite MCP 生成一个勇敢骑士的像素画精灵表，银色盔甲手持长剑。四方向行走动画（下、上、左、右），每个方向 4 帧，32x32，平涂色块，透明背景。
-
----
-
-**示例：导入 PNG（画任意图形的推荐工作流）**
-
-绘制复杂或不适合网格的图形时，用 Python/PIL 生成 PNG 再导入，比用 `draw_from_grid` 描述每个像素或调用数百次 `draw_pixel` 要省得多得多的 token。
-
-```python
-# 第 1 步：用 Python/PIL 生成 PNG
-from PIL import Image, ImageDraw
-img = Image.new("RGBA", (32, 32), (0, 0, 0, 0))      # 透明背景
-d = ImageDraw.Draw(img)
-d.ellipse([4, 4, 27, 27], fill=(231, 76, 60, 255))    # 画一个红色圆
-img.save("circle.png")
-```
-
-```python
-# 第 2 步：将 PNG 导入为新的 Aseprite 会话
-import_png(png_path="circle.png", mode="new")
-# 返回：{ "session_id": "...", "width": 32, "height": 32, ... }
-```
-
-```python
-# 第 3 步：如需精修，使用像素级工具
-draw_pixel(session_id="...", x=16, y=6, color="#FFFFFF")   # 添加高光
-```
-
-使用 `mode="stamp"` 可将 PNG 贴到已有会话的指定图层/帧/偏移位置——适合添加细节、贴图章或合成子图。
-
 
 ---
 

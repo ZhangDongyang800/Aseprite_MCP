@@ -44,9 +44,12 @@ class Config:
         """从环境变量加载配置，应用默认值。"""
         # Aseprite 可执行文件路径
         if self.aseprite_path is None:
-            self.aseprite_path = os.environ.get(
-                "ASEPRITE_PATH",
-                r"D:\cxdownload\game_develop\Aseprite-v1.3.17.2-Source\build\bin\aseprite.exe",
+            from src.aseprite_locate import locate_aseprite
+
+            self.aseprite_path = (
+                os.environ.get("ASEPRITE_PATH")
+                or locate_aseprite()
+                or "aseprite"
             )
 
         # 会话工作目录

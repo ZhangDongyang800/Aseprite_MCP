@@ -5,16 +5,36 @@ from pathlib import Path
 from unittest.mock import patch
 
 
-def test_default_aseprite_path():
-    """测试默认 Aseprite 路径。"""
+def test_aseprite_path_uses_detected_path(monkeypatch, tmp_path):
+    """测试未设置环境变量时使用自动探测结果。"""
+    from src import aseprite_locate
     from src.config import Config
 
-    # 清除环境变量以测试默认值
-    with patch.dict(os.environ, {}, clear=False):
-        os.environ.pop("ASEPRITE_PATH", None)
-        config = Config()
-        expected = r"D:\cxdownload\game_develop\Aseprite-v1.3.17.2-Source\build\bin\aseprite.exe"
-        assert config.aseprite_path == expected
+    fake = str(tmp_path / "aseprite.exe")
+    monkeypatch.delenv("ASEPRITE_PATH", raising=False)
+    monkeypatch.setattr(aseprite_locate, "locate_aseprite", lambda: fake)
+    assert Config().aseprite_path == fake
+
+
+def test_aseprite_path_falls_back_to_command_name(monkeypatch):
+    """测试探测失败时回退到 "aseprite" 交由系统解析。"""
+    from src import aseprite_locate
+    from src.config import Config
+
+    monkeypatch.delenv("ASEPRITE_PATH", raising=False)
+    monkeypatch.setattr(aseprite_locate, "locate_aseprite", lambda: None)
+    assert Config().aseprite_path == "aseprite"
+
+
+def test_env_path_takes_precedence_over_detection(monkeypatch, tmp_path):
+    """测试 ASEPRITE_PATH 优先于自动探测。"""
+    from src import aseprite_locate
+    from src.config import Config
+
+    env_path = str(tmp_path / "env-aseprite.exe")
+    monkeypatch.setenv("ASEPRITE_PATH", env_path)
+    monkeypatch.setattr(aseprite_locate, "locate_aseprite", lambda: "detected")
+    assert Config().aseprite_path == env_path
 
 
 def test_custom_aseprite_path_via_env():
@@ -72,3 +92,22 @@ def test_scripts_dir_is_always_relative_to_package():
     # scripts 目录应与 src 同级
     expected_parent = Path(__file__).parent.parent
     assert config.scripts_dir == expected_parent / "scripts"
+
+
+def test_locate_prefers_env(monkeypatch, tmp_path):
+    from src.aseprite_locate import locate_aseprite
+
+    fake = tmp_path / "aseprite.exe"
+    fake.write_text("x")
+    monkeypatch.setenv("ASEPRITE_PATH", str(fake))
+    assert locate_aseprite() == str(fake)
+
+
+def test_locate_returns_none_when_missing(monkeypatch, tmp_path):
+    from src.aseprite_locate import locate_aseprite
+
+    monkeypatch.setenv("ASEPRITE_PATH", str(tmp_path / "nope.exe"))
+    monkeypatch.setattr(
+        "src.aseprite_locate._candidate_paths", lambda: [tmp_path / "nope2.exe"]
+    )
+    assert locate_aseprite() is None

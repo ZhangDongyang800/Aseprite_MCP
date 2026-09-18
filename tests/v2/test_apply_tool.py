@@ -37,3 +37,25 @@ def test_apply_operations_session_created_by_first_op(tools):
     ])
     assert env.ok is True
     assert env.session_id in [s["session_id"] for s in sm.list_sessions()]
+
+
+def test_dry_run_does_not_create_session(tools):
+    captured, sm, _ = tools
+    before = len(sm.list_sessions())
+    env = captured["apply_operations"](
+        ops=[{"op": "create_sprite", "width": 8, "height": 8}], dry_run=True
+    )
+    assert env.ok is True
+    assert len(sm.list_sessions()) == before
+
+
+def test_dry_run_does_not_close_session(tools):
+    captured, sm, _ = tools
+    sid = sm.create_session(8, 8)
+    sm.get_ase_path(sid).write_bytes(b"ASE")
+    env = captured["apply_operations"](
+        session_id=sid, ops=[{"op": "close_session"}],
+        confirmed=True, dry_run=True,
+    )
+    assert env.ok is True
+    assert sid in [s["session_id"] for s in sm.list_sessions()]

@@ -41,7 +41,7 @@ def register_v2_tools(mcp, session_manager, runner, config):
             )
 
         first = ops[0].get("op") if isinstance(ops[0], dict) else None
-        if session_id is None and first in ("create_sprite", "open_sprite"):
+        if not dry_run and session_id is None and first in ("create_sprite", "open_sprite"):
             session_id = session_manager.create_session(
                 width=int(ops[0].get("width", 1)),
                 height=int(ops[0].get("height", 1)),
@@ -60,7 +60,7 @@ def register_v2_tools(mcp, session_manager, runner, config):
 
         env = engine.apply(session_id, ops, atomic=atomic, dry_run=dry_run)
 
-        if env.ok and any(spec.name == "close_session" for spec, _ in parsed):
+        if env.ok and not dry_run and any(spec.name == "close_session" for spec, _ in parsed):
             if session_id:
                 session_manager.close_session(session_id)
         return env

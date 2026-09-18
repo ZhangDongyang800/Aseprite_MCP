@@ -22,7 +22,7 @@ function _G._mcp_op_save_sprite(sprite, params)
         return {saved = true, path = params.path}
     end
     sprite:save()
-    return {saved = true, path = sprite.filename}
+    return {saved = (sprite.filename ~= nil and sprite.filename ~= ""), path = sprite.filename or ""}
 end
 
 function _G._mcp_op_open_sprite(sprite, params)

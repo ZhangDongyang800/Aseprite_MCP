@@ -30,5 +30,5 @@ def tools(tmp_path):
         return func
 
     mcp.tool = capture
-    register_v2_tools(mcp, sm, runner, config)
+    captured["_engine"] = register_v2_tools(mcp, sm, runner, config)
     return captured, sm, runner

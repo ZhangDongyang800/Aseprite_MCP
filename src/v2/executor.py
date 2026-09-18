@@ -1,5 +1,6 @@
 """执行器：锁、备份、编译、单进程执行（spec §6）。"""
 
+import contextlib
 import shutil
 import threading
 import time
@@ -26,6 +27,12 @@ class Engine:
             return self._locks.setdefault(session_id, threading.Lock())
 
     # ---------- public ----------
+
+    @contextlib.contextmanager
+    def session_lock(self, session_id: str):
+        """公共每会话锁：run_lua 与 inspect 必须经此串行化。"""
+        with self._lock(session_id):
+            yield
 
     def apply(self, session_id, raw_ops, *, atomic=True, dry_run=False) -> Envelope:
         start = time.time()

@@ -67,13 +67,25 @@ def register_v2_tools(mcp, session_manager, runner, config):
         return env
 
     @mcp.tool(annotations={"destructiveHint": True, "openWorldHint": False})
-    def run_lua(session_id: str, code: str, unsafe: bool = False) -> Envelope:
-        """执行任意 Lua（逃逸舱）。必须 unsafe=true 显式声明。"""
+    def run_lua(
+        session_id: str,
+        code: str,
+        unsafe: bool = False,
+        confirmed: bool = False,
+    ) -> Envelope:
+        """执行任意 Lua（逃逸舱）。必须 unsafe=true 且 confirmed=true。"""
         if not unsafe:
             return Envelope.failure(
                 ErrorCode.UNSUPPORTED_IN_MODE,
                 "run_lua requires unsafe=true",
                 hint="prefer apply_operations; run_lua can break documents",
+                session_id=session_id, mode=config.mode,
+            )
+        if not confirmed:
+            return Envelope.failure(
+                ErrorCode.CONFIRMATION_REQUIRED,
+                "run_lua requires confirmed=true",
+                hint="re-call with confirmed=true",
                 session_id=session_id, mode=config.mode,
             )
         try:
@@ -84,11 +96,12 @@ def register_v2_tools(mcp, session_manager, runner, config):
                 session_id=session_id, mode=config.mode,
             )
         snippet = work / "_run_lua.lua"
-        snippet.write_text(code, encoding="utf-8")
-        result = runner.run_script("mcp_run_lua.lua", {
-            "file": str(session_manager.get_ase_path(session_id)),
-            "code_path": str(snippet),
-        })
+        with engine.session_lock(session_id):
+            snippet.write_text(code, encoding="utf-8")
+            result = runner.run_script("mcp_run_lua.lua", {
+                "file": str(session_manager.get_ase_path(session_id)),
+                "code_path": str(snippet),
+            })
         if not result["success"]:
             return Envelope.failure(
                 ErrorCode.LUA_RUNTIME_ERROR,
@@ -102,3 +115,5 @@ def register_v2_tools(mcp, session_manager, runner, config):
                                  data={"stdout": result.get("stdout", "")})],
             changed=True,
         )
+
+    return engine

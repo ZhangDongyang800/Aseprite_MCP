@@ -39,6 +39,8 @@ Thumbs.db
 .uploads/
 # docs 目录内容默认忽略，但 specs 设计文档需纳入版本控制
 docs/*
+!docs/superpowers/
+!docs/superpowers/**
 *.log
 
 # 本地环境变量文件
@@ -54,6 +56,3 @@ docs/*
 # *.gif
 # *.png
 # *.jpg
-
-# 测试
-tests/

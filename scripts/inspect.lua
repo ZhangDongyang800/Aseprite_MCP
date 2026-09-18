@@ -6,6 +6,7 @@ end
 
 local file = app.params["file"]
 local output = app.params["output"]
+local metrics_output = app.params["metrics_output"]
 local scale = tonumber(app.params["scale"] or "4") or 4
 local view = app.params["view"] or "composite"
 
@@ -34,6 +35,11 @@ end
 
 -- 临时副本：缩放与导出都不触碰原文档
 local preview = Sprite(sprite)
+
+-- 先落一张 scale=1 原始尺寸副本供 Python 计算指标（避免放大/recolour 失真）
+if metrics_output and metrics_output ~= "" then
+    preview:saveCopyAs(metrics_output)
+end
 
 -- silhouette 视图：把副本上所有非透明像素涂黑（仅改副本）
 if view == "silhouette" then

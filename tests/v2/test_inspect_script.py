@@ -26,3 +26,12 @@ def test_inspect_lua_supports_silhouette():
 def test_inspect_lua_scale_param_fallback():
     text = (SCRIPTS / "inspect.lua").read_text(encoding="utf-8")
     assert 'tonumber(app.params["scale"] or "4") or 4' in text
+
+
+def test_inspect_lua_metrics_copy_precedes_recolour_and_resize():
+    text = (SCRIPTS / "inspect.lua").read_text(encoding="utf-8")
+    metrics_idx = text.index("preview:saveCopyAs(metrics_output)")
+    silhouette_idx = text.index('view == "silhouette"')
+    resize_idx = text.index("preview:resize")
+    output_idx = text.index("preview:saveCopyAs(output)")
+    assert metrics_idx < silhouette_idx < resize_idx < output_idx

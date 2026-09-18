@@ -131,22 +131,25 @@ def register_v2_tools(mcp, session_manager, runner, config):
             raise ValueError(f"session not found: {session_id}")
 
         png = work / "preview.png"
+        metrics_png = work / "metrics_src.png"
         with engine.session_lock(session_id):
             result = runner.run_script("inspect.lua", {
                 "file": str(ase), "output": str(png),
+                "metrics_output": str(metrics_png),
                 "scale": str(scale), "view": view,
             })
-        if not result["success"]:
-            raise RuntimeError(result.get("error", "inspect failed"))
+            if not result["success"]:
+                raise RuntimeError(result.get("error", "inspect failed"))
 
-        meta = json.loads(result["stdout"].strip().splitlines()[-1])
-        metrics = compute_metrics(png, meta)
-        (work / "metrics.json").write_text(
-            json.dumps({"meta": meta, "metrics": metrics}, ensure_ascii=False, indent=2),
-            encoding="utf-8",
-        )
+            meta = json.loads(result["stdout"].strip().splitlines()[-1])
+            metrics = compute_metrics(metrics_png, meta)
+            (work / "metrics.json").write_text(
+                json.dumps({"meta": meta, "metrics": metrics}, ensure_ascii=False, indent=2),
+                encoding="utf-8",
+            )
+            image = Image(path=str(png))
         return ToolResult(
-            content=[Image(path=str(png))],
+            content=[image],
             structured_content={"meta": meta, "metrics": metrics},
         )
 

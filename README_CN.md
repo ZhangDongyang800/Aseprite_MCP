@@ -19,6 +19,23 @@
 
 <br>
 
+##  示例演示
+
+三个角色都是 AI 通过本 MCP 现场绘制的像素素材：像素全部由 `apply_operations` 写入，
+`run_lua` 只负责 op 面没有的结构工作（加帧、设时长、建 tag、导出精灵表）。
+
+| 角色 | ↓ 下 | ↑ 上 | ← 左 | → 右 | 精灵表 |
+|:--|:--:|:--:|:--:|:--:|:--:|
+| **Q 版骑士**<br>4 方向 × 6 帧 | ![](demo/Knightling/knight_walk_down.gif) | ![](demo/Knightling/knight_walk_up.gif) | ![](demo/Knightling/knight_walk_left.gif) | ![](demo/Knightling/knight_walk_right.gif) | ![](demo/Knightling/chibi_knight_spritesheet.png) |
+| **暗黑死神**<br>4 方向 × 6 帧 | ![](demo/dark_reaper/dark_reaper_walk_down.gif) | ![](demo/dark_reaper/dark_reaper_walk_up.gif) | ![](demo/dark_reaper/dark_reaper_walk_left.gif) | ![](demo/dark_reaper/dark_reaper_walk_right.gif) | ![](demo/dark_reaper/dark_reaper_spritesheet.png) |
+| **黏液吞噬怪**<br>4 方向 × 5 帧动作 | ![](demo/slime_devourer/slime_devourer_devour_down.gif) | ![](demo/slime_devourer/slime_devourer_devour_up.gif) | ![](demo/slime_devourer/slime_devourer_devour_left.gif) | ![](demo/slime_devourer/slime_devourer_devour_right.gif) | ![](demo/slime_devourer/slime_devourer_spritesheet.png) |
+
+> 前两个是**行走循环**（骑士靠腿部反相摆动，死神没有腿、靠袍摆行波与骨脚读出迈步）；
+> 第三个是**动作帧动画**：待机 → 蓄力 → 张口突进 → 咬合 → 吞咽，帧时长按相位变化。
+> 每个角色的 `demo/<name>/generator/` 下都有可重跑的参数化生成器与逐帧像素校验脚本。
+
+---
+
 > [!IMPORTANT]
 > 本项目需要本地安装 [Aseprite](https://aseprite.org/) v1.3+。AI 通过 MCP 协议调用 Aseprite CLI + Lua 脚本来执行绘制。
 >
@@ -31,10 +48,11 @@
 
 ##  目录
 
+- [ 示例演示](#-示例演示)
 - [ 如何使用](#-如何使用)
 - [ 实时模式（可选，WebSocket）](#-实时模式可选-websocket)
 - [工具](#工具)
-- [ 示例演示](#-示例演示)
+- [ 示例提示词](#-示例提示词)
 - [ 参与贡献](#-参与贡献)
 - [ 开源协议](#-开源协议)
 
@@ -197,7 +215,7 @@ MCP 服务器运行后，打开 Aseprite 并点击：
 | 工具 | 说明 |
 |------|------|
 | `apply_operations` | 在单个事务中执行一批 op——唯一的变更入口。传入 `session_id` + `ops[]`；`dry_run=true` 只校验、不产生副作用；批次包含破坏性 op（`clear_canvas`、`close_session`）时必须传 `confirmed=true`。省略 `session_id` 且首个 op 为 `create_sprite` / `open_sprite` 时会自动创建会话。 |
-| `inspect` | 只读感知：返回画布预览图与量化指标（调色板、颜色数、包围盒、覆盖率、半透明与孤立像素）。永不修改文档。 |
+| `inspect` | 只读感知：返回画布预览图与量化指标（调色板、颜色数、包围盒、覆盖率、半透明与孤立像素）。动画文档用 `frame=N` 逐帧查看。永不修改文档。 |
 | `run_lua` | 逃逸舱：执行任意 Lua。需要 `unsafe=true` 且 `confirmed=true`。 |
 
 op 是注册在 `src/v2/ops/` 中的命名操作（Pydantic 参数模型），其 Lua 实现位于 `scripts/ops_*.lua`。内置 op：`create_sprite`、`open_sprite`、`save_sprite`、`close_session`、`draw_pixel`、`draw_rect`、`fill_region`、`clear_canvas`。
@@ -217,31 +235,31 @@ apply_operations(ops=[
 
 ---
 
-##  示例演示
+##  示例提示词
 
+顶部三张并列素材各自的提示词与实现要点。
 
+**Q 版骑士 · 4 方向 × 6 帧 · 32x32**
 
-**示例：Q 版骑士行走动画**
+> 使用 Aseprite MCP 生成一个勇敢骑士的像素画精灵表，银色盔甲手持长剑、红色盔缨配红披风。四方向行走动画（下、上、左、右），每个方向 6 帧，32x32，平涂色块，透明背景，1px 深色描边，光源统一在左上。
 
-<div align="center">
+腿部按 `sin(2πt)` 反相摆动、身体在接触拍下沉、披风与盔缨随相位甩动；摆幅刻意放大到 4x 下发尺寸仍能读出动作。布料还要额外滞后半帧（follow-through）——纯正弦按 6 点均匀采样是对称的，会有两对帧量化后完全相同、被 GIF 编码器静默合并成 4 帧。
 
-**四方向行走动画**
+---
 
-| ↓ 下 | ↑ 上 |
-|:---:|:---:|
-| ![](demo/Knightling/knight_walk_down.gif) | ![](demo/Knightling/knight_walk_up.gif) |
-| ← 左 | → 右 |
-| ![](demo/Knightling/knight_walk_left.gif) | ![](demo/Knightling/knight_walk_right.gif) |
+**暗黑死神 · 4 方向 × 6 帧 · 32x32**
 
-**精灵表**
+> 使用 Aseprite MCP 生成一个身披破烂黑袍、手持巨型镰刀的暗黑死神像素精灵表，兜帽下一双发光红眼。四方向行走动画（下、上、左、右），每个方向 6 帧，32x32，扁平色彩，透明背景，1px 深色描边。
 
-![](demo/Knightling/chibi_knight_spritesheet.png)
+死神没有腿：行走靠袍摆下缘的行波涟漪、整体起伏和袍下露出的骨脚交替读出来。正/背视里镰刃必须朝身体外侧扫出，否则会把兜帽整个盖掉。
 
-</div>
+---
 
-**AI 提示词：**
+**黏液吞噬怪 · 4 方向 × 5 帧 · 32x32**
 
-> 使用 Aseprite MCP 生成一个勇敢骑士的像素画精灵表，银色盔甲手持长剑。四方向行走动画（下、上、左、右），每个方向 4 帧，32x32，平涂色块，透明背景。
+> 使用 Aseprite MCP 生成一只会吞噬猎物的黏液怪像素精灵表，绿色软体、大嘴尖牙。四方向吞噬动画（下、上、左、右），每个方向 5 帧：待机 → 蓄力下压 → 张口突进 → 咬合 → 吞咽鼓包。32x32，扁平色彩，透明背景，精灵表布局。
+
+这一例展示的是**动作帧动画**而不只是行走循环：20 帧落在同一个 `.ase` 里，用 4 个 tag（`devour_down` 等）按方向分段，帧时长按相位变化（200/100/80/90/220 ms，咬合最快、吞咽最慢）。侧视用"颅骨 + 下颚两块椭圆绕嘴角铰点反向旋转"建模，嘴才是咬穿轮廓的缺口而不是体内的一个洞。
 
 ---
 

@@ -19,6 +19,27 @@ A Model Context Protocol (MCP) server that enables AI to create pixel art in Ase
 
 <br>
 
+##  Demo
+
+All three characters were drawn by an AI through this MCP — every pixel written by
+`apply_operations`, with `run_lua` used only for the structural work the op registry has no op
+for (adding frames, setting durations, creating tags, exporting the sheet).
+
+| Character | ↓ Down | ↑ Up | ← Left | → Right | Sprite Sheet |
+|:--|:--:|:--:|:--:|:--:|:--:|
+| **Chibi Knight**<br>4 dirs × 6 frames | ![](demo/Knightling/knight_walk_down.gif) | ![](demo/Knightling/knight_walk_up.gif) | ![](demo/Knightling/knight_walk_left.gif) | ![](demo/Knightling/knight_walk_right.gif) | ![](demo/Knightling/chibi_knight_spritesheet.png) |
+| **Dark Reaper**<br>4 dirs × 6 frames | ![](demo/dark_reaper/dark_reaper_walk_down.gif) | ![](demo/dark_reaper/dark_reaper_walk_up.gif) | ![](demo/dark_reaper/dark_reaper_walk_left.gif) | ![](demo/dark_reaper/dark_reaper_walk_right.gif) | ![](demo/dark_reaper/dark_reaper_spritesheet.png) |
+| **Slime Devourer**<br>4 dirs × 5 action frames | ![](demo/slime_devourer/slime_devourer_devour_down.gif) | ![](demo/slime_devourer/slime_devourer_devour_up.gif) | ![](demo/slime_devourer/slime_devourer_devour_left.gif) | ![](demo/slime_devourer/slime_devourer_devour_right.gif) | ![](demo/slime_devourer/slime_devourer_spritesheet.png) |
+
+> The first two are **walk cycles** (the knight steps on anti-phase leg swings; the reaper has no
+> legs, so the walk reads through a travelling wave in the robe hem plus alternating bone feet).
+> The third is an **action animation**: idle → crouch → lunge with open maw → chomp → swallow,
+> with per-phase frame durations.
+> Each character ships a re-runnable parametric generator and a per-frame pixel check under
+> `demo/<name>/generator/`.
+
+---
+
 > [!IMPORTANT]
 > This project requires a local installation of [Aseprite](https://aseprite.org/) v1.3+. AI performs drawing via the MCP protocol by calling the Aseprite CLI + Lua scripts.
 >
@@ -31,10 +52,11 @@ A Model Context Protocol (MCP) server that enables AI to create pixel art in Ase
 
 ##  Table of Contents
 
+- [ Demo](#-demo)
 - [ How to Use](#-how-to-use)
 - [ Live Mode (Optional, WebSocket)](#-live-mode-optional-websocket)
 - [Tools](#tools)
-- [ Demo](#-demo)
+- [ Example Prompts](#-example-prompts)
 - [ Contributing](#-contributing)
 - [ License](#-license)
 
@@ -197,7 +219,7 @@ Exactly three MCP tools:
 | Tool | Description |
 |------|-------------|
 | `apply_operations` | Execute a batch of ops inside one transaction — the only mutation entry point. Pass `session_id` + `ops[]`; `dry_run=true` validates without side effects; `confirmed=true` is required when the batch contains a destructive op (`clear_canvas`, `close_session`). If `session_id` is omitted and the first op is `create_sprite` / `open_sprite`, a session is created automatically. |
-| `inspect` | Read-only perception: returns a canvas preview image plus quantitative metrics (palette, color count, bounding box, coverage, semi-transparent and isolated pixels). Never modifies the document. |
+| `inspect` | Read-only perception: returns a canvas preview image plus quantitative metrics (palette, color count, bounding box, coverage, semi-transparent and isolated pixels). On animated documents, `frame=N` steps through frames one at a time. Never modifies the document. |
 | `run_lua` | Escape hatch: run arbitrary Lua. Requires `unsafe=true` and `confirmed=true`. |
 
 Ops are named operations registered in `src/v2/ops/` (Pydantic parameter models) with their Lua implementations in `scripts/ops_*.lua`. Built-in ops: `create_sprite`, `open_sprite`, `save_sprite`, `close_session`, `draw_pixel`, `draw_rect`, `fill_region`, `clear_canvas`.
@@ -217,31 +239,31 @@ All drawing ops accept `layer` / `frame` (1-based, default 1/1). A batch runs in
 
 ---
 
-##  Demo
+##  Example Prompts
 
+The prompt and implementation notes behind each row of the table at the top.
 
+**Chibi Knight · 4 directions × 6 frames · 32x32**
 
-**Example: Chibi Knight Walk Cycle**
+> Use Aseprite MCP to generate a pixel art sprite sheet of a brave knight in silver armor holding a long sword, red plume and red cape. Four-direction walk cycle (down, up, left, right), 6 frames per direction, 32x32, flat colors, transparent background, 1px dark outline, light from the top-left.
 
-<div align="center">
+Legs swing in anti-phase on `sin(2πt)`, the body sinks on each contact beat, and the cape and plume sway with the same phase — amplitudes are deliberately exaggerated so the motion still reads at the 4x size the asset ships at. The cloth also lags by half a frame (follow-through): a pure sine sampled at 6 evenly spaced points is symmetric, so two pairs of frames quantise to identical pixels and the GIF encoder silently merges them down to 4 frames.
 
-**Four-Direction Walk Animation**
+---
 
-| ↓ Down | ↑ Up |
-|:---:|:---:|
-| ![](demo/Knightling/knight_walk_down.gif) | ![](demo/Knightling/knight_walk_up.gif) |
-| ← Left | → Right |
-| ![](demo/Knightling/knight_walk_left.gif) | ![](demo/Knightling/knight_walk_right.gif) |
+**Dark Reaper · 4 directions × 6 frames · 32x32**
 
-**Sprite Sheet**
+> Use Aseprite MCP to generate a pixel art sprite sheet of a dark reaper in a tattered black robe wielding a giant scythe, glowing red eyes under the hood. Four-direction walk cycle (down, up, left, right), 6 frames per direction, 32x32, flat colors, transparent background, 1px dark outline.
 
-![](demo/Knightling/chibi_knight_spritesheet.png)
+The reaper has no legs: the walk is carried by a travelling wave along the robe hem, a whole-body bob, and two bone feet alternating out from under the robe. In the front and back views the scythe blade must sweep outward from the body, otherwise it covers the hood entirely.
 
-</div>
+---
 
-**AI Prompt:**
+**Slime Devourer · 4 directions × 5 frames · 32x32**
 
-> Use Aseprite MCP to generate a pixel art sprite sheet of a brave knight in silver armor holding a long sword. Four-direction walk cycle (down, up, left, right), 4 frames per direction, 32x32, flat colors, transparent background.
+> Use Aseprite MCP to generate a pixel art sprite sheet of a slime monster that devours its prey — green blob body, huge jaws, fangs. Four-direction devour animation (down, up, left, right), 5 frames per direction: idle → crouch → lunge with open maw → chomp → swallow. 32x32, flat colors, transparent background, sprite sheet layout.
+
+This one shows an **action animation**, not just a walk cycle: all 20 frames live in one `.ase`, split by direction into 4 tags (`devour_down`, …), with per-phase frame durations (200/100/80/90/220 ms — the chomp snaps fastest, the swallow lingers). The side view is modelled as a skull ellipse and a jaw ellipse counter-rotating about the mouth hinge, which is what makes the open mouth a notch cut through the silhouette instead of a hole floating inside the body.
 
 ---
 

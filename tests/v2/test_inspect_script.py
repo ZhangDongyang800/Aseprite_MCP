@@ -40,3 +40,16 @@ def test_inspect_lua_metrics_copy_precedes_recolour_and_resize():
     resize_idx = text.index("preview:resize")
     output_idx = text.index("preview:saveCopyAs(output)")
     assert metrics_idx < silhouette_idx < resize_idx < output_idx
+
+
+def test_inspect_lua_frame_param_defaults_to_first():
+    text = (SCRIPTS / "inspect.lua").read_text(encoding="utf-8")
+    assert 'tonumber(app.params["frame"] or "1") or 1' in text
+
+
+def test_inspect_lua_collapses_multi_frame_copy_before_export():
+    """多帧文档上 saveCopyAs 会写成 name1.png..nameN.png，副本必须先压成单帧。"""
+    text = (SCRIPTS / "inspect.lua").read_text(encoding="utf-8")
+    assert text.index("deleteFrame") < text.index("preview:saveCopyAs(metrics_output)")
+    # 删帧只允许发生在临时副本上
+    assert "sprite:deleteFrame" not in text

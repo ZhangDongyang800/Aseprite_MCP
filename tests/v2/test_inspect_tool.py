@@ -67,6 +67,7 @@ def test_inspect_calls_script_with_session_path_and_writes_preview(tools):
             "metrics_output": str(work / "metrics_src.png"),
             "scale": "4",
             "view": "composite",
+            "frame": "1",
         },
     )
     assert (work / "preview.png").exists()
@@ -108,6 +109,32 @@ def test_inspect_passes_scale_and_view(tools):
     _, params = runner.run_script.call_args[0]
     assert params["scale"] == "8"
     assert params["view"] == "silhouette"
+
+
+def test_inspect_passes_frame(tools):
+    captured, sm, runner = tools
+    sid = sm.create_session(2, 2)
+    runner.run_script.side_effect = _write_preview
+
+    captured["inspect"](session_id=sid, frame=7)
+
+    _, params = runner.run_script.call_args[0]
+    assert params["frame"] == "7"
+
+
+def test_inspect_missing_export_is_error_not_traceback(tools):
+    """脚本自称成功却没落盘时，必须回结构化错误而不是 FileNotFoundError。"""
+    captured, sm, runner = tools
+    sid = sm.create_session(2, 2)
+    runner.run_script.return_value = {"success": True, "stdout": json.dumps(META),
+                                      "stderr": ""}
+
+    result = captured["inspect"](session_id=sid)
+
+    assert result.is_error is True
+    assert result.structured_content["ok"] is False
+    assert result.structured_content["error"]["code"] == "file_error"
+    assert "preview.png" in result.structured_content["error"]["message"]
 
 
 def test_inspect_holds_session_lock(tools):

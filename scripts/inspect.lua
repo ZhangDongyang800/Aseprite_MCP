@@ -9,6 +9,7 @@ local output = app.params["output"]
 local metrics_output = app.params["metrics_output"]
 local scale = tonumber(app.params["scale"] or "4") or 4
 local view = app.params["view"] or "composite"
+local want = tonumber(app.params["frame"] or "1") or 1
 
 if not output then error("output is required") end
 if not metrics_output or metrics_output == "" then error("metrics_output is required") end
@@ -36,6 +37,14 @@ end
 
 -- 临时副本：缩放与导出都不触碰原文档
 local preview = Sprite(sprite)
+
+-- 多帧文档上 saveCopyAs 会写成 name1.png..nameN.png，Python 侧永远等不到约定的文件名。
+-- 先把副本压成第 want 帧，原文档的帧数不受影响。
+if want < 1 then want = 1 end
+if want > #preview.frames then want = #preview.frames end
+for i = #preview.frames, 1, -1 do
+  if i ~= want then preview:deleteFrame(preview.frames[i]) end
+end
 
 -- 先落一张 scale=1 原始尺寸副本供 Python 计算指标（避免放大/recolour 失真）
 if metrics_output and metrics_output ~= "" then
@@ -69,4 +78,5 @@ preview:close()
 print(json.encode({
     width = sprite.width, height = sprite.height,
     frames = frames, layers = layers, palette = palette, tags = tags, view = view,
+    frame = want, frames_total = #sprite.frames,
 }))

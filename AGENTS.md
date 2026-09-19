@@ -51,10 +51,11 @@ extension/main.lua   Aseprite extension; connects as WebSocket client, dofiles s
 - **`--script-param` MUST precede `--script`**, or `app.params` is empty. Order is enforced in `AsepriteRunner.run_script`; still applies to the legacy scripts and `mcp_run_lua.lua`.
 - Scripts read `app.params["key"]`; all values are strings. Aseprite Lua has **no `loadstring`**, so params are passed as `key=value` — v2 instead compiles op params to Lua literals (`src/v2/compile.py`).
 - Every script's first lines must conditionally load `mcp_common.lua` only if `not _G._mcp_common_loaded` (Live mode preloads it, CLI mode does not).
-- Use `_mcp_get_sprite(file)`, `_mcp_get_target_image(sprite, layer, frame)`, then `_mcp_maybe_save(sprite, file)`. `layer`/`frame` are **1-based**; missing cels are auto-created.
+- Use `_mcp_get_sprite(file)`, `_mcp_get_target_image(sprite, layer, frame)`, then `_mcp_maybe_save(sprite, file)`. `layer`/`frame` are **1-based**; missing cels are auto-created, but **layers and frames are not** — a fresh sprite has one layer and one frame, so `layer=2` or `frame=2` errors out until you add them via `run_lua`.
 - `apply_operations` validates every op and enforces the confirmation gate **before** creating a session; with no `session_id`, a first `create_sprite`/`open_sprite` auto-creates the session and injects `file`.
 - `AsepriteRunner` forces `encoding="utf-8"` with a 30s timeout (Windows GBK would otherwise corrupt JSON output).
 - v2 batch output is one JSON line after the `__MCP_JSON__` marker, parsed by `parse_result_stdout` (`src/v2/compile.py`); `inspect.lua` prints its metadata JSON on the last stdout line.
+- **`Sprite:saveCopyAs("x.png")` on a multi-frame document writes `x1.png … xN.png` and never `x.png`.** `inspect.lua` collapses its temp copy to a single frame (`deleteFrame`) before exporting, which is what keeps the agreed filenames intact; the tool's `frame` param picks the frame.
 - `run_lua` writes the snippet to `<work>/_run_lua.lua` and runs it under the same per-session lock as `apply_operations`/`inspect` (`Engine.session_lock`).
 - CLI undo/redo are single-step file swaps (`work/<uuid>/undo_backup.ase` / `redo_backup.ase`); Live mode uses Aseprite's native history.
 

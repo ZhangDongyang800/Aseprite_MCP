@@ -135,8 +135,16 @@ def register_v2_tools(mcp, session_manager, runner, config):
         )
 
     @mcp.tool(annotations={"readOnlyHint": True, "openWorldHint": False})
-    def inspect(session_id: str, scale: int = 4, view: str = "composite") -> ToolResult:
-        """返回画布预览与量化指标（只读，永不改动文档）。"""
+    def inspect(
+        session_id: str,
+        scale: int = 4,
+        view: str = "composite",
+        frame: int = 1,
+    ) -> ToolResult:
+        """返回画布预览与量化指标（只读，永不改动文档）。
+
+        动画文档用 frame（1 起）指定看哪一帧；越界由 Lua 侧夹到有效范围。
+        """
         import json
 
         from src.v2.inspect import compute_metrics
@@ -161,7 +169,7 @@ def register_v2_tools(mcp, session_manager, runner, config):
             result = runner.run_script("inspect.lua", {
                 "file": str(ase), "output": str(png),
                 "metrics_output": str(metrics_png),
-                "scale": str(scale), "view": view,
+                "scale": str(scale), "view": view, "frame": str(frame),
             })
             if not result["success"]:
                 message = result.get("error", "inspect failed")
@@ -170,6 +178,20 @@ def register_v2_tools(mcp, session_manager, runner, config):
                     structured_content={
                         "ok": False,
                         "error": {"code": "script_error", "message": message},
+                    },
+                    is_error=True,
+                )
+
+            if not png.exists() or not metrics_png.exists():
+                missing = ", ".join(
+                    p.name for p in (png, metrics_png) if not p.exists()
+                )
+                message = f"inspect.lua reported success but wrote no {missing}"
+                return ToolResult(
+                    content=[message],
+                    structured_content={
+                        "ok": False,
+                        "error": {"code": "file_error", "message": message},
                     },
                     is_error=True,
                 )

@@ -56,3 +56,6 @@ docs/*
 # *.gif
 # *.png
 # *.jpg
+
+# demo 生成器的中间产物
+.build/

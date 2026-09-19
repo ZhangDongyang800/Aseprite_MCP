@@ -2078,6 +2078,27 @@ end
 
 -- 临时副本：缩放与导出都不触碰原文档
 local preview = Sprite(sprite)
+-- 先落一张 scale=1 原尺寸副本，供 Python 计算指标（避免放大导致 bbox/孤立像素失真）
+local metrics_output = app.params["metrics_output"]
+if metrics_output and metrics_output ~= "" then
+    preview:saveCopyAs(metrics_output)
+end
+-- silhouette 只改副本、且在指标副本之后
+if view == "silhouette" then
+    local black = app.pixelColor.rgba(0, 0, 0, 255)
+    for _, layer in ipairs(preview.layers) do
+        for _, cel in ipairs(layer.cels) do
+            local img = cel.image
+            for y = 0, img.height - 1 do
+                for x = 0, img.width - 1 do
+                    if app.pixelColor.rgbaA(img:getPixel(x, y)) > 0 then
+                        img:drawPixel(x, y, black)
+                    end
+                end
+            end
+        end
+    end
+end
 if scale > 1 then
     preview:resize(preview.width * scale, preview.height * scale)
 end
@@ -2239,6 +2260,35 @@ def compute_metrics(png_path: Path, meta: dict) -> dict:
 
 `grid_offset` 与 `frame_diffs` 在本任务返回保守默认值；多帧 diff 在阶段 3 用 `compare_frames.lua` 补齐（记录为已知限制）。
 
+- [ ] **Step 3b: `inspect.lua` 支持 silhouette 视图（spec §8）**
+
+在 `scripts/inspect.lua` 的 `scale` 之前插入（仅改克隆，源文档不变）：
+
+```lua
+local scale = tonumber(app.params["scale"] or "4") or 4
+local view = app.params["view"] or "composite"
+
+-- ... clone 之后 ...
+if view == "silhouette" then
+    local black = app.pixelColor.rgba(0, 0, 0, 255)
+    for _, layer in ipairs(preview.layers) do
+        for _, cel in ipairs(layer.cels) do
+            local img = cel.image
+            for y = 0, img.height - 1 do
+                for x = 0, img.width - 1 do
+                    local c = img:getPixel(x, y)
+                    if app.pixelColor.rgbaA(c) > 0 then
+                        img:drawPixel(x, y, black)
+                    end
+                end
+            end
+        end
+    end
+end
+```
+
+测试：`test_inspect_lua_supports_silhouette` 断言脚本含 `silhouette` 分支与 `pixelColor.rgbaA`。
+
 - [ ] **Step 4: 实现 `inspect` 工具**
 
 替换 `src/v2/tools.py` 的占位：
@@ -2258,23 +2308,27 @@ def compute_metrics(png_path: Path, meta: dict) -> dict:
             raise ValueError(f"session not found: {session_id}")
 
         png = work / "preview.png"
-        result = runner.run_script("inspect.lua", {
-            "file": str(ase), "output": str(png),
-            "scale": str(scale), "view": view,
-        })
-        if not result["success"]:
-            raise RuntimeError(result.get("error", "inspect failed"))
+        metrics_png = work / "metrics_src.png"
+        with engine.session_lock(session_id):
+            result = runner.run_script("inspect.lua", {
+                "file": str(ase), "output": str(png),
+                "metrics_output": str(metrics_png),
+                "scale": str(scale), "view": view,
+            })
+            if not result["success"]:
+                raise RuntimeError(result.get("error", "inspect failed"))
 
-        import json
+            import json
 
-        meta = json.loads(result["stdout"].strip().splitlines()[-1])
-        metrics = compute_metrics(png, meta)
-        (work / "metrics.json").write_text(
-            json.dumps({"meta": meta, "metrics": metrics}, ensure_ascii=False, indent=2),
-            encoding="utf-8",
-        )
+            meta = json.loads(result["stdout"].strip().splitlines()[-1])
+            metrics = compute_metrics(metrics_png, meta)
+            (work / "metrics.json").write_text(
+                json.dumps({"meta": meta, "metrics": metrics}, ensure_ascii=False, indent=2),
+                encoding="utf-8",
+            )
+            image = Image(path=str(png))
         return ToolResult(
-            content=[Image(path=str(png))],
+            content=[image],
             structured_content={"meta": meta, "metrics": metrics},
         )
 ```
@@ -2347,6 +2401,8 @@ git commit -m "docs: document v2 three-tool surface"
 - CLI 批量中途失败时 `op_results` 可能不完整（事务回滚后 Lua 提前 `error`），阶段 3 改为在事务内收集完整失败列表。
 - P0-5 的根因（选区随进程丢失）由事务内核结构性消除；选区类 op（select/delete_selection）在阶段 3 迁移，届时补跨 op 选区保持的测试。
 - P0-6 的根因（Python 侧尺寸缓存漂移）随旧 `get_canvas_info` 退役消除；画布元数据改由 `inspect` 每次从 Lua 读取。
+- `inspect` 的 `layers`/`frames`/`onion` 视图延后到阶段 3；阶段 2 支持 `composite` 与 `silhouette`（Task 2.2 Step 3b）。
+- Live 模式下 `Sprite(sprite)` 克隆与 `preview:close()` 对 `app.activeSprite` 的影响无法在本阶段自动化验证，交由 e2e 阶段覆盖。
 
 ## 附录 B：退役用例记录
 

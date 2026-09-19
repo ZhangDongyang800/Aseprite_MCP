@@ -59,3 +59,6 @@ docs/*
 
 # demo 生成器的中间产物
 .build/
+
+# 会话临时产物（demo 草稿、预览图、评审 diff）
+.superpowers/

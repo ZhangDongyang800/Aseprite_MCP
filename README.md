@@ -7,7 +7,7 @@
 A Model Context Protocol (MCP) server that enables AI to create pixel art in Aseprite through pixel-level drawing primitives, read canvas screenshots, and iterate until satisfied.
 
 [![Python](https://img.shields.io/badge/Python-3.10%2B-3776AB?style=flat-square&logo=python&logoColor=white)](https://www.python.org/)
-[![FastMCP](https://img.shields.io/badge/FastMCP-2.0%2B-FF6B35?style=flat-square)](https://github.com/jlowin/fastmcp)
+[![FastMCP](https://img.shields.io/badge/FastMCP-4.x-FF6B35?style=flat-square)](https://github.com/jlowin/fastmcp)
 [![Aseprite](https://img.shields.io/badge/Aseprite-v1.3%2B-7D9F37?style=flat-square)](https://aseprite.org/)
 [![Stars](https://img.shields.io/github/stars/ZhangDongyang800/Aseprite_MCP?style=flat-square&logo=github&color=yellow)](https://github.com/ZhangDongyang800/Aseprite_MCP/stargazers)
 
@@ -53,76 +53,93 @@ for (adding frames, setting durations, creating tags, exporting the sheet).
 ##  Table of Contents
 
 - [ Demo](#-demo)
+- [Tools](#tools)
 - [ How to Use](#-how-to-use)
 - [ Live Mode (Optional, WebSocket)](#-live-mode-optional-websocket)
-- [Tools](#tools)
 - [ Example Prompts](#-example-prompts)
 - [ Contributing](#-contributing)
 - [ License](#-license)
 
 ---
 
+## Tools
+
+Exactly three MCP tools:
+
+| Tool | Description |
+|------|-------------|
+| `apply_operations` | Execute a batch of ops inside one transaction — the only mutation entry point. Pass `session_id` + `ops[]`; `dry_run=true` validates without side effects; `confirmed=true` is required when the batch contains a destructive op (`clear_canvas`, `close_session`). If `session_id` is omitted and the first op is `create_sprite` / `open_sprite`, a session is created automatically. |
+| `inspect` | Read-only perception: returns a canvas preview image plus quantitative metrics (palette, color count, bounding box, coverage, semi-transparent and isolated pixels). On animated documents, `frame=N` steps through frames one at a time. Never modifies the document. |
+| `run_lua` | Escape hatch: run arbitrary Lua. Requires `unsafe=true` and `confirmed=true`. |
+
+Ops are named operations registered in `src/v2/ops/` (Pydantic parameter models) with their Lua implementations in `scripts/ops_*.lua`. Built-in ops: `create_sprite`, `open_sprite`, `save_sprite`, `close_session`, `draw_pixel`, `draw_rect`, `fill_region`, `clear_canvas`.
+
+```python
+apply_operations(ops=[
+    {"op": "create_sprite", "width": 32, "height": 32},
+    {"op": "draw_rect", "x": 4, "y": 4, "width": 24, "height": 24, "color": "#E74C3C", "filled": True},
+    {"op": "draw_pixel", "x": 16, "y": 6, "color": "#FFFFFF"},
+])
+```
+
+All drawing ops accept `layer` / `frame` (1-based, default 1/1). A batch runs inside one `app.transaction`, so `atomic=true` (the default) rolls the whole batch back if any op fails.
+
+> [!TIP]
+> `inspect` is the core of the workflow: after drawing, AI calls it to "see" the canvas, analyze it, and decide whether to fix it, forming a **draw → inspect → analyze → fix** loop.
+
+---
+
 ##  How to Use
 
-### 1. Environment Setup
+### 1. Prerequisites
 
-Before configuring MCP, prepare your local development environment:
+| Dependency | Version | Notes |
+|------------|---------|-------|
+| [uv](https://docs.astral.sh/uv/) | any recent | manages Python and the dependencies for you |
+| Aseprite | v1.3+ | note the full path to the **executable**, not the folder holding it |
 
-| Dependency | Version | Download |
-|------------|---------|----------|
-| Python | 3.10+ | [python.org](https://www.python.org/downloads/) |
-| Aseprite | v1.3+ | [aseprite.org](https://aseprite.org/) (remember the install path) |
+Install uv with `winget install astral-sh.uv` (Windows), `brew install uv` (macOS), or `curl -LsSf https://astral.sh/uv/install.sh | sh`.
 
-### 2. MCP Server Setup
+### 2. Clone
 
 ```bash
 git clone https://github.com/ZhangDongyang800/Aseprite_MCP.git
-cd Aseprite_MCP
-pip install -e .
 ```
 
-This installs `fastmcp` and `websockets` (the latter is required for optional [Live Mode](#-live-mode-optional-websocket)).
+There is no install step: the `uv run` command in step 3 provisions an isolated environment from `pyproject.toml` the first time it launches.
 
 ### 3. Client Configuration
 
-> [!IMPORTANT]
-> Replace the paths below with your actual local paths:
-> - Path to `server.py` in `args`
-> - `ASEPRITE_PATH` environment variable value
-> - `python` path in `command`
+Replace `C:\path\to\Aseprite_MCP` with where you cloned this repo, and the two `env` paths with your own. Keep `ASEPRITE_WORK_DIR` absolute and ASCII-only.
 
-**TRAE:**
-
-Open TRAE → Settings → MCP → Add MCP Server, paste:
+**JSON config** (TRAE, Claude Desktop, Cursor, Qoder, …):
 
 ```json
 {
   "mcpServers": {
     "aseprite": {
-      "command": "python",
-      "args": ["C:\\path\\to\\Aseprite_MCP\\server.py"],
+      "command": "uv",
+      "args": ["run", "--directory", "C:\\path\\to\\Aseprite_MCP", "server.py"],
       "env": {
-        "ASEPRITE_PATH": "C:\\Program Files\\Aseprite\\aseprite.exe"
+        "ASEPRITE_PATH": "C:\\Program Files\\Aseprite\\aseprite.exe",
+        "ASEPRITE_WORK_DIR": "C:\\ase_work"
       }
     }
   }
 }
 ```
 
-**Codex CLI:**
+If the client cannot find `uv`, put the absolute path to `uv` in `command`. Do not fall back to a bare `python` — on Windows it is often shadowed by the Microsoft Store alias, and on a machine with several interpreters it may be the one without the dependencies.
 
-Config file: `~/.codex/config.toml`
+Without uv, the equivalent local setup is:
 
-```toml
-[mcp_servers.aseprite]
-command = "python"
-args = ["/path/to/Aseprite_MCP/server.py"]
-
-[mcp_servers.aseprite.env]
-ASEPRITE_PATH = "C:\\Program Files\\Aseprite\\aseprite.exe"
+```bash
+python -m venv .venv                                  # Windows, if `python` is missing: py -3 -m venv .venv
+.venv/Scripts/python.exe -m pip install -e .          # Windows
+.venv/bin/python -m pip install -e .                  # macOS / Linux
 ```
 
-After configuration, ask your AI tool to use Aseprite-related tools to start creating.
+Then set `command` to the absolute path of that interpreter (`.venv/Scripts/python.exe` or `.venv/bin/python`) and `args` to `["C:\\path\\to\\Aseprite_MCP\\server.py"]`. Never use `pip install --user`: hosts commonly strip `APPDATA`, and Python cannot see the user site-packages without it.
 
 ---
 
@@ -164,10 +181,11 @@ Add `ASEPRITE_MCP_MODE=ws` to the `env` section of your MCP server config:
 {
   "mcpServers": {
     "aseprite": {
-      "command": "python",
-      "args": ["C:\\path\\to\\Aseprite_MCP\\server.py"],
+      "command": "uv",
+      "args": ["run", "--directory", "C:\\path\\to\\Aseprite_MCP", "server.py"],
       "env": {
         "ASEPRITE_PATH": "C:\\Program Files\\Aseprite\\aseprite.exe",
+        "ASEPRITE_WORK_DIR": "C:\\ase_work",
         "ASEPRITE_MCP_MODE": "ws",
         "ASEPRITE_WS_HOST": "127.0.0.1",
         "ASEPRITE_WS_PORT": "9001"
@@ -196,7 +214,7 @@ Now AI can operate Aseprite directly — create a sprite, draw pixels, and you'l
 | Startup overhead | New process per call | Single running instance |
 | Setup complexity | None | Install extension + connect |
 | Aseprite focus required | No | Yes (callbacks delayed when unfocused) |
-| Fallback | N/A | Auto-falls back to CLI if extension not connected |
+| Fallback | N/A | None while running: if the extension is not connected, tools return an error. Only a failure to *bind* the WebSocket port at startup falls back to CLI. |
 
 > [!TIP]
 > If the Aseprite extension is not connected, Live mode tools return a clear error message guiding you to connect. The existing CLI mode is always available as fallback by setting `ASEPRITE_MCP_MODE=cli` (or removing the variable).
@@ -206,36 +224,11 @@ Now AI can operate Aseprite directly — create a sprite, draw pixels, and you'l
 | Variable | Default | Description |
 |----------|---------|-------------|
 | `ASEPRITE_PATH` | auto-detected | Path to the Aseprite executable (overrides auto-detection via `PATH` and common install locations) |
+| `ASEPRITE_WORK_DIR` | `./work` | Session scratch directory (`.ase` files and exports). Relative to whatever cwd the MCP host spawns the process in, which is arbitrary and sometimes read-only — set an absolute, ASCII-only path |
+| `ASEPRITE_SESSION_TIMEOUT` | `3600` | Seconds an idle session survives before the cleanup thread removes it |
 | `ASEPRITE_MCP_MODE` | `cli` | Execution mode: `cli` or `ws` |
 | `ASEPRITE_WS_HOST` | `127.0.0.1` | WebSocket server bind address |
 | `ASEPRITE_WS_PORT` | `9001` | WebSocket server port |
-
----
-
-## Tools
-
-Exactly three MCP tools:
-
-| Tool | Description |
-|------|-------------|
-| `apply_operations` | Execute a batch of ops inside one transaction — the only mutation entry point. Pass `session_id` + `ops[]`; `dry_run=true` validates without side effects; `confirmed=true` is required when the batch contains a destructive op (`clear_canvas`, `close_session`). If `session_id` is omitted and the first op is `create_sprite` / `open_sprite`, a session is created automatically. |
-| `inspect` | Read-only perception: returns a canvas preview image plus quantitative metrics (palette, color count, bounding box, coverage, semi-transparent and isolated pixels). On animated documents, `frame=N` steps through frames one at a time. Never modifies the document. |
-| `run_lua` | Escape hatch: run arbitrary Lua. Requires `unsafe=true` and `confirmed=true`. |
-
-Ops are named operations registered in `src/v2/ops/` (Pydantic parameter models) with their Lua implementations in `scripts/ops_*.lua`. Built-in ops: `create_sprite`, `open_sprite`, `save_sprite`, `close_session`, `draw_pixel`, `draw_rect`, `fill_region`, `clear_canvas`.
-
-```python
-apply_operations(ops=[
-    {"op": "create_sprite", "width": 32, "height": 32},
-    {"op": "draw_rect", "x": 4, "y": 4, "width": 24, "height": 24, "color": "#E74C3C", "filled": True},
-    {"op": "draw_pixel", "x": 16, "y": 6, "color": "#FFFFFF"},
-])
-```
-
-All drawing ops accept `layer` / `frame` (1-based, default 1/1). A batch runs inside one `app.transaction`, so `atomic=true` (the default) rolls the whole batch back if any op fails.
-
-> [!TIP]
-> `inspect` is the core of the workflow: after drawing, AI calls it to "see" the canvas, analyze it, and decide whether to fix it, forming a **draw → inspect → analyze → fix** loop.
 
 ---
 

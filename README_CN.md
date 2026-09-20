@@ -7,7 +7,7 @@
 一个模型上下文协议（MCP）服务器，让 AI 通过像素级绘制原语在 Aseprite 中创建像素画，读取画布截图，并不断迭代直至满意。
 
 [![Python](https://img.shields.io/badge/Python-3.10%2B-3776AB?style=flat-square&logo=python&logoColor=white)](https://www.python.org/)
-[![FastMCP](https://img.shields.io/badge/FastMCP-2.0%2B-FF6B35?style=flat-square)](https://github.com/jlowin/fastmcp)
+[![FastMCP](https://img.shields.io/badge/FastMCP-4.x-FF6B35?style=flat-square)](https://github.com/jlowin/fastmcp)
 [![Aseprite](https://img.shields.io/badge/Aseprite-v1.3%2B-7D9F37?style=flat-square)](https://aseprite.org/)
 [![Stars](https://img.shields.io/github/stars/ZhangDongyang800/Aseprite_MCP?style=flat-square&logo=github&color=yellow)](https://github.com/ZhangDongyang800/Aseprite_MCP/stargazers)
 
@@ -49,76 +49,93 @@
 ##  目录
 
 - [ 示例演示](#-示例演示)
+- [工具](#工具)
 - [ 如何使用](#-如何使用)
 - [ 实时模式（可选，WebSocket）](#-实时模式可选-websocket)
-- [工具](#工具)
 - [ 示例提示词](#-示例提示词)
 - [ 参与贡献](#-参与贡献)
 - [ 开源协议](#-开源协议)
 
 ---
 
+## 工具
+
+服务器只暴露三个 MCP 工具：
+
+| 工具 | 说明 |
+|------|------|
+| `apply_operations` | 在单个事务中执行一批 op——唯一的变更入口。传入 `session_id` + `ops[]`；`dry_run=true` 只校验、不产生副作用；批次包含破坏性 op（`clear_canvas`、`close_session`）时必须传 `confirmed=true`。省略 `session_id` 且首个 op 为 `create_sprite` / `open_sprite` 时会自动创建会话。 |
+| `inspect` | 只读感知：返回画布预览图与量化指标（调色板、颜色数、包围盒、覆盖率、半透明与孤立像素）。动画文档用 `frame=N` 逐帧查看。永不修改文档。 |
+| `run_lua` | 逃逸舱：执行任意 Lua。需要 `unsafe=true` 且 `confirmed=true`。 |
+
+op 是注册在 `src/v2/ops/` 中的命名操作（Pydantic 参数模型），其 Lua 实现位于 `scripts/ops_*.lua`。内置 op：`create_sprite`、`open_sprite`、`save_sprite`、`close_session`、`draw_pixel`、`draw_rect`、`fill_region`、`clear_canvas`。
+
+```python
+apply_operations(ops=[
+    {"op": "create_sprite", "width": 32, "height": 32},
+    {"op": "draw_rect", "x": 4, "y": 4, "width": 24, "height": 24, "color": "#E74C3C", "filled": True},
+    {"op": "draw_pixel", "x": 16, "y": 6, "color": "#FFFFFF"},
+])
+```
+
+所有绘制 op 都接受 `layer` / `frame`（从 1 开始计数，默认 1/1）。一批 op 在单个 `app.transaction` 中执行，因此默认的 `atomic=true` 会在任意 op 失败时回滚整批。
+
+> [!TIP]
+> `inspect` 是工作流的核心：绘制后，AI 调用它来"看到"画布、分析它，并决定是否修正，形成 **操作 → 检查 → 分析 → 修正** 的循环。
+
+---
+
 ##  如何使用
 
-### 1. 环境准备
+### 1. 准备
 
-配置 MCP 之前，请先准备好本地开发环境：
+| 依赖 | 版本 | 说明 |
+|------|------|------|
+| [uv](https://docs.astral.sh/uv/) | 任意较新版本 | 由它代管 Python 和全部依赖 |
+| Aseprite | v1.3+ | 记下**可执行文件**的完整路径，不是它所在的文件夹 |
 
-| 依赖 | 版本 | 下载 |
-|------------|---------|----------|
-| Python | 3.10+ | [python.org](https://www.python.org/downloads/) |
-| Aseprite | v1.3+ | [aseprite.org](https://aseprite.org/)（请记住安装路径） |
+安装 uv：Windows `winget install astral-sh.uv`，macOS `brew install uv`，或 `curl -LsSf https://astral.sh/uv/install.sh | sh`。
 
-### 2. MCP 服务器安装
+### 2. 克隆
 
 ```bash
 git clone https://github.com/ZhangDongyang800/Aseprite_MCP.git
-cd Aseprite_MCP
-pip install -e .
 ```
 
-这将安装 `fastmcp` 和 `websockets`（后者用于可选的[实时模式](#-实时模式可选-websocket)）。
+没有安装步骤：第 3 节的 `uv run` 会在首次启动时按 `pyproject.toml` 自动建好独立环境并装齐 `fastmcp` / `pillow` / `websockets`。
 
 ### 3. 客户端配置
 
-> [!IMPORTANT]
-> 请将以下路径替换为你本地的真实路径：
-> - `args` 中的 `server.py` 路径
-> - `ASEPRITE_PATH` 环境变量的值
-> - `command` 中的 `python` 路径
+把 `C:\path\to\Aseprite_MCP` 换成你的克隆位置，两个 `env` 路径换成你自己的；`ASEPRITE_WORK_DIR` 用绝对路径且纯英文。
 
-**TRAE：**
-
-打开 TRAE → 设置 → MCP → 添加 MCP 服务器，粘贴：
+**JSON 配置**（TRAE、Claude Desktop、Cursor、Qoder 等）：
 
 ```json
 {
   "mcpServers": {
     "aseprite": {
-      "command": "python",
-      "args": ["C:\\path\\to\\Aseprite_MCP\\server.py"],
+      "command": "uv",
+      "args": ["run", "--directory", "C:\\path\\to\\Aseprite_MCP", "server.py"],
       "env": {
-        "ASEPRITE_PATH": "C:\\Program Files\\Aseprite\\aseprite.exe"
+        "ASEPRITE_PATH": "C:\\Program Files\\Aseprite\\aseprite.exe",
+        "ASEPRITE_WORK_DIR": "C:\\ase_work"
       }
     }
   }
 }
 ```
 
-**Codex CLI:**
+客户端找不到 `uv` 时，把 `command` 换成 `uv` 的绝对路径即可。不要退回裸 `python`——Windows 上它常被 Microsoft Store 的「应用执行别名」桩截获，多版本共存时又可能正是没装依赖的那一个。
 
-配置文件：`~/.codex/config.toml`
+不想用 uv 的话，等价的本地配置是：
 
-```toml
-[mcp_servers.aseprite]
-command = "python"
-args = ["/path/to/Aseprite_MCP/server.py"]
-
-[mcp_servers.aseprite.env]
-ASEPRITE_PATH = "C:\\Program Files\\Aseprite\\aseprite.exe"
+```bash
+python -m venv .venv                                  # Windows 没有 python 时：py -3 -m venv .venv
+.venv/Scripts/python.exe -m pip install -e .          # Windows
+.venv/bin/python -m pip install -e .                  # macOS / Linux
 ```
 
-配置完成后，让 AI 工具使用 Aseprite 相关工具即可开始创作。
+再把 `command` 换成上面那个解释器的绝对路径（`.venv/Scripts/python.exe` 或 `.venv/bin/python`），`args` 换成 `["C:\\path\\to\\Aseprite_MCP\\server.py"]`。别用 `pip install --user`：宿主常会剥掉 `APPDATA`，Python 就看不见 user site-packages 了。
 
 ---
 
@@ -160,10 +177,11 @@ Python MCP 服务器在 `127.0.0.1:9001` 启动一个 WebSocket 服务器。Asep
 {
   "mcpServers": {
     "aseprite": {
-      "command": "python",
-      "args": ["C:\\path\\to\\Aseprite_MCP\\server.py"],
+      "command": "uv",
+      "args": ["run", "--directory", "C:\\path\\to\\Aseprite_MCP", "server.py"],
       "env": {
         "ASEPRITE_PATH": "C:\\Program Files\\Aseprite\\aseprite.exe",
+        "ASEPRITE_WORK_DIR": "C:\\ase_work",
         "ASEPRITE_MCP_MODE": "ws",
         "ASEPRITE_WS_HOST": "127.0.0.1",
         "ASEPRITE_WS_PORT": "9001"
@@ -192,7 +210,7 @@ MCP 服务器运行后，打开 Aseprite 并点击：
 | 启动开销 | 每次调用启动新进程 | 单个运行实例 |
 | 配置复杂度 | 无需配置 | 需安装扩展并连接 |
 | 需要 Aseprite 焦点 | 否 | 是（未聚焦时回调会延迟） |
-| 回退 | 不适用 | 扩展未连接时自动回退到 CLI |
+| 回退 | 不适用 | 运行中不会回退：扩展未连接时工具直接返回错误。只有启动时 WebSocket 端口**绑定失败**才会降级为 CLI 模式 |
 
 > [!TIP]
 > 如果 Aseprite 扩展未连接，实时模式工具会返回清晰的错误信息引导你连接。现有的 CLI 模式始终可用作回退，只需设置 `ASEPRITE_MCP_MODE=cli`（或删除该变量）。
@@ -202,36 +220,11 @@ MCP 服务器运行后，打开 Aseprite 并点击：
 | 变量 | 默认值 | 说明 |
 |----------|---------|-------------|
 | `ASEPRITE_PATH` | 自动检测 | Aseprite 可执行文件路径（优先于 `PATH` 与常见安装位置的自动检测） |
+| `ASEPRITE_WORK_DIR` | `./work` | 会话临时目录（`.ase` 与导出文件）。它相对于**宿主启动进程时所在的工作目录**，那个目录既不确定也可能不可写——请设为绝对路径，且只用 ASCII 字符 |
+| `ASEPRITE_SESSION_TIMEOUT` | `3600` | 空闲会话被清理线程回收前的存活秒数 |
 | `ASEPRITE_MCP_MODE` | `cli` | 执行模式：`cli` 或 `ws` |
 | `ASEPRITE_WS_HOST` | `127.0.0.1` | WebSocket 服务器绑定地址 |
 | `ASEPRITE_WS_PORT` | `9001` | WebSocket 服务器端口 |
-
----
-
-## 工具
-
-服务器只暴露三个 MCP 工具：
-
-| 工具 | 说明 |
-|------|------|
-| `apply_operations` | 在单个事务中执行一批 op——唯一的变更入口。传入 `session_id` + `ops[]`；`dry_run=true` 只校验、不产生副作用；批次包含破坏性 op（`clear_canvas`、`close_session`）时必须传 `confirmed=true`。省略 `session_id` 且首个 op 为 `create_sprite` / `open_sprite` 时会自动创建会话。 |
-| `inspect` | 只读感知：返回画布预览图与量化指标（调色板、颜色数、包围盒、覆盖率、半透明与孤立像素）。动画文档用 `frame=N` 逐帧查看。永不修改文档。 |
-| `run_lua` | 逃逸舱：执行任意 Lua。需要 `unsafe=true` 且 `confirmed=true`。 |
-
-op 是注册在 `src/v2/ops/` 中的命名操作（Pydantic 参数模型），其 Lua 实现位于 `scripts/ops_*.lua`。内置 op：`create_sprite`、`open_sprite`、`save_sprite`、`close_session`、`draw_pixel`、`draw_rect`、`fill_region`、`clear_canvas`。
-
-```python
-apply_operations(ops=[
-    {"op": "create_sprite", "width": 32, "height": 32},
-    {"op": "draw_rect", "x": 4, "y": 4, "width": 24, "height": 24, "color": "#E74C3C", "filled": True},
-    {"op": "draw_pixel", "x": 16, "y": 6, "color": "#FFFFFF"},
-])
-```
-
-所有绘制 op 都接受 `layer` / `frame`（从 1 开始计数，默认 1/1）。一批 op 在单个 `app.transaction` 中执行，因此默认的 `atomic=true` 会在任意 op 失败时回滚整批。
-
-> [!TIP]
-> `inspect` 是工作流的核心：绘制后，AI 调用它来"看到"画布、分析它，并决定是否修正，形成 **操作 → 检查 → 分析 → 修正** 的循环。
 
 ---
 

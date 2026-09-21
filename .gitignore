@@ -37,10 +37,8 @@ Thumbs.db
 
 # 日志文件
 .uploads/
-# docs 目录内容默认忽略，但 specs 设计文档需纳入版本控制
-docs/*
-!docs/superpowers/
-!docs/superpowers/**
+# docs 目录只作为本地工作文档，不纳入版本控制
+docs/
 *.log
 
 # 本地环境变量文件

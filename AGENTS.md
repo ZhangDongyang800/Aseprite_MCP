@@ -69,4 +69,4 @@ extension/main.lua   Aseprite extension; connects as WebSocket client, dofiles s
 
 - `README.md` / `README_CN.md` — install, client config, Live-mode setup, 3-tool surface, demo.
 - `CLAUDE.md` — deeper architecture notes; its tool counts are outdated, trust the code.
-- `docs/` — pixel-art workflow/standards doc (Chinese).
+- `docs/` — pixel-art workflow/standards doc (Chinese). Local only: the whole directory is gitignored and never published.

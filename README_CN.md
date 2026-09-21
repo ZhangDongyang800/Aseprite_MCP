@@ -21,8 +21,9 @@
 
 ##  示例演示
 
-三个角色都是 AI 通过本 MCP 现场绘制的像素素材：像素全部由 `apply_operations` 写入，
-`run_lua` 只负责 op 面没有的结构工作（加帧、设时长、建 tag、导出精灵表）。
+三个角色都是 AI 通过本 MCP 现场绘制的像素素材：像素全部由 `apply_operations` 写入。
+结构工作（加帧、设时长、建 tag、导出精灵表）在这几张图制作时只能走 `run_lua`，
+如今前三样已经有 `add_frames` / `set_durations` / `add_tag` 三个 op 覆盖。
 
 | 角色 | ↓ 下 | ↑ 上 | ← 左 | → 右 | 精灵表 |
 |:--|:--:|:--:|:--:|:--:|:--:|
@@ -108,7 +109,7 @@ git clone https://github.com/ZhangDongyang800/Aseprite_MCP.git
 
 ### 3. 客户端配置
 
-把 `C:\path\to\Aseprite_MCP` 换成你的克隆位置，两个 `env` 路径换成你自己的；`ASEPRITE_WORK_DIR` 用绝对路径且纯英文。
+把 `C:\path\to\Aseprite_MCP` 换成你的克隆位置，两个 `env` 路径换成你自己的。
 
 **JSON 配置**（TRAE、Claude Desktop、Cursor、Qoder 等）：
 
@@ -127,17 +128,13 @@ git clone https://github.com/ZhangDongyang800/Aseprite_MCP.git
 }
 ```
 
-客户端找不到 `uv` 时，把 `command` 换成 `uv` 的绝对路径即可。不要退回裸 `python`——Windows 上它常被 Microsoft Store 的「应用执行别名」桩截获，多版本共存时又可能正是没装依赖的那一个。
-
-不想用 uv 的话，等价的本地配置是：
+客户端找不到 `uv` 时，把 `command` 写成 `uv` 的绝对路径。不要退回裸 `python`（Windows 上它被 Microsoft Store 的别名桩截获），也不要 `pip install --user`（宿主会剥掉 `APPDATA`，Python 就看不见包装到哪了）。不想用 uv，就装进虚拟环境、把 `command` 指向那个解释器：
 
 ```bash
 python -m venv .venv                                  # Windows 没有 python 时：py -3 -m venv .venv
 .venv/Scripts/python.exe -m pip install -e .          # Windows
 .venv/bin/python -m pip install -e .                  # macOS / Linux
 ```
-
-再把 `command` 换成上面那个解释器的绝对路径（`.venv/Scripts/python.exe` 或 `.venv/bin/python`），`args` 换成 `["C:\\path\\to\\Aseprite_MCP\\server.py"]`。别用 `pip install --user`：宿主常会剥掉 `APPDATA`，Python 就看不见 user site-packages 了。
 
 ---
 
@@ -203,26 +200,12 @@ MCP 服务器运行后，打开 Aseprite 并点击：
 
 现在 AI 可以直接操作 Aseprite——创建精灵、绘制像素，你会看到它实时发生。
 
-### CLI 模式与实时模式对比
-
-| 方面 | CLI 模式（默认） | 实时模式（WebSocket） |
-|--------|-------------------|----------------------|
-| UI 可见性 | 无头模式（`-b` 标志） | 完整 UI，可观看 AI 绘制 |
-| 状态持久化 | 每次调用独立（基于文件） | 跨调用持久化 |
-| 启动开销 | 每次调用启动新进程 | 单个运行实例 |
-| 配置复杂度 | 无需配置 | 需安装扩展并连接 |
-| 需要 Aseprite 焦点 | 否 | 是（未聚焦时回调会延迟） |
-| 回退 | 不适用 | 运行中不会回退：扩展未连接时工具直接返回错误。只有启动时 WebSocket 端口**绑定失败**才会降级为 CLI 模式 |
-
-> [!TIP]
-> 如果 Aseprite 扩展未连接，实时模式工具会返回清晰的错误信息引导你连接。现有的 CLI 模式始终可用作回退，只需设置 `ASEPRITE_MCP_MODE=cli`（或删除该变量）。
-
 ### 环境变量
 
 | 变量 | 默认值 | 说明 |
 |----------|---------|-------------|
 | `ASEPRITE_PATH` | 自动检测 | Aseprite 可执行文件路径（优先于 `PATH` 与常见安装位置的自动检测） |
-| `ASEPRITE_WORK_DIR` | `./work` | 会话临时目录（`.ase` 与导出文件）。它相对于**宿主启动进程时所在的工作目录**，那个目录既不确定也可能不可写——请设为绝对路径，且只用 ASCII 字符 |
+| `ASEPRITE_WORK_DIR` | `<repo>/work` | 服务器状态目录：会话放在 `<work>/sessions/<uuid>/`，超过 `ASEPRITE_SESSION_TIMEOUT` 自动回收。默认就是绝对路径，且必须保持纯英文——Aseprite 会拒绝含非 ASCII 的脚本路径，却把锅甩给 Lua 引擎 |
 | `ASEPRITE_SESSION_TIMEOUT` | `3600` | 空闲会话被清理线程回收前的存活秒数 |
 | `ASEPRITE_MCP_MODE` | `cli` | 执行模式：`cli` 或 `ws` |
 | `ASEPRITE_WS_HOST` | `127.0.0.1` | WebSocket 服务器绑定地址 |
@@ -232,13 +215,11 @@ MCP 服务器运行后，打开 Aseprite 并点击：
 
 ##  示例提示词
 
-顶部三张并列素材各自的提示词与实现要点。
+顶部三张并列素材各自的提示词。
 
 **Q 版骑士 · 4 方向 × 6 帧 · 32x32**
 
 > 使用 Aseprite MCP 生成一个勇敢骑士的像素画精灵表，银色盔甲手持长剑、红色盔缨配红披风。四方向行走动画（下、上、左、右），每个方向 6 帧，32x32，平涂色块，透明背景，1px 深色描边，光源统一在左上。
-
-腿部按 `sin(2πt)` 反相摆动、身体在接触拍下沉、披风与盔缨随相位甩动；摆幅刻意放大到 4x 下发尺寸仍能读出动作。布料还要额外滞后半帧（follow-through）——纯正弦按 6 点均匀采样是对称的，会有两对帧量化后完全相同、被 GIF 编码器静默合并成 4 帧。
 
 ---
 
@@ -246,15 +227,11 @@ MCP 服务器运行后，打开 Aseprite 并点击：
 
 > 使用 Aseprite MCP 生成一个身披破烂黑袍、手持巨型镰刀的暗黑死神像素精灵表，兜帽下一双发光红眼。四方向行走动画（下、上、左、右），每个方向 6 帧，32x32，扁平色彩，透明背景，1px 深色描边。
 
-死神没有腿：行走靠袍摆下缘的行波涟漪、整体起伏和袍下露出的骨脚交替读出来。正/背视里镰刃必须朝身体外侧扫出，否则会把兜帽整个盖掉。
-
 ---
 
 **黏液吞噬怪 · 4 方向 × 5 帧 · 32x32**
 
 > 使用 Aseprite MCP 生成一只会吞噬猎物的黏液怪像素精灵表，绿色软体、大嘴尖牙。四方向吞噬动画（下、上、左、右），每个方向 5 帧：待机 → 蓄力下压 → 张口突进 → 咬合 → 吞咽鼓包。32x32，扁平色彩，透明背景，精灵表布局。
-
-这一例展示的是**动作帧动画**而不只是行走循环：20 帧落在同一个 `.ase` 里，用 4 个 tag（`devour_down` 等）按方向分段，帧时长按相位变化（200/100/80/90/220 ms，咬合最快、吞咽最慢）。侧视用"颅骨 + 下颚两块椭圆绕嘴角铰点反向旋转"建模，嘴才是咬穿轮廓的缺口而不是体内的一个洞。
 
 ---
 
@@ -262,7 +239,7 @@ MCP 服务器运行后，打开 Aseprite 并点击：
 
 欢迎提交 Issue 和 Pull Request！
 
-我已尝试过，但无法保证完美运行。仍需更多优化。
+我已尝试过，但无法保证完美运行，仍需更多优化。
 
 ---
 

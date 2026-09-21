@@ -22,8 +22,9 @@ A Model Context Protocol (MCP) server that enables AI to create pixel art in Ase
 ##  Demo
 
 All three characters were drawn by an AI through this MCP — every pixel written by
-`apply_operations`, with `run_lua` used only for the structural work the op registry has no op
-for (adding frames, setting durations, creating tags, exporting the sheet).
+`apply_operations`. The structural work (adding frames, setting durations, building tags,
+exporting the sheet) had to go through `run_lua` when these were made; three of those four now
+have ops of their own — `add_frames`, `set_durations`, `add_tag`.
 
 | Character | ↓ Down | ↑ Up | ← Left | → Right | Sprite Sheet |
 |:--|:--:|:--:|:--:|:--:|:--:|
@@ -108,11 +109,11 @@ Install uv with `winget install astral-sh.uv` (Windows), `brew install uv` (macO
 git clone https://github.com/ZhangDongyang800/Aseprite_MCP.git
 ```
 
-There is no install step: the `uv run` command in step 3 provisions an isolated environment from `pyproject.toml` the first time it launches.
+There is no install step: the `uv run` command in step 3 provisions an isolated environment from `pyproject.toml` on first launch, with `fastmcp` / `pillow` / `websockets`.
 
 ### 3. Client Configuration
 
-Replace `C:\path\to\Aseprite_MCP` with where you cloned this repo, and the two `env` paths with your own. Keep `ASEPRITE_WORK_DIR` absolute and ASCII-only.
+Replace `C:\path\to\Aseprite_MCP` with where you cloned this repo, and the two `env` paths with your own.
 
 **JSON config** (TRAE, Claude Desktop, Cursor, Qoder, …):
 
@@ -131,17 +132,13 @@ Replace `C:\path\to\Aseprite_MCP` with where you cloned this repo, and the two `
 }
 ```
 
-If the client cannot find `uv`, put the absolute path to `uv` in `command`. Do not fall back to a bare `python` — on Windows it is often shadowed by the Microsoft Store alias, and on a machine with several interpreters it may be the one without the dependencies.
-
-Without uv, the equivalent local setup is:
+If the client cannot find `uv`, give `command` the absolute path to `uv`. Never fall back to a bare `python` — Windows shadows it with a Store alias — or to `pip install --user`, because hosts strip `APPDATA` and Python then cannot find the packages. To skip uv entirely, install into a virtualenv and point `command` at that interpreter:
 
 ```bash
 python -m venv .venv                                  # Windows, if `python` is missing: py -3 -m venv .venv
 .venv/Scripts/python.exe -m pip install -e .          # Windows
 .venv/bin/python -m pip install -e .                  # macOS / Linux
 ```
-
-Then set `command` to the absolute path of that interpreter (`.venv/Scripts/python.exe` or `.venv/bin/python`) and `args` to `["C:\\path\\to\\Aseprite_MCP\\server.py"]`. Never use `pip install --user`: hosts commonly strip `APPDATA`, and Python cannot see the user site-packages without it.
 
 ---
 
@@ -207,26 +204,12 @@ You should see an alert: "MCP Bridge: Connected to ws://127.0.0.1:9001".
 
 Now AI can operate Aseprite directly — create a sprite, draw pixels, and you'll see it happen live.
 
-### CLI vs Live Mode Comparison
-
-| Aspect | CLI Mode (default) | Live Mode (WebSocket) |
-|--------|-------------------|----------------------|
-| UI visibility | Headless (`-b` flag) | Full UI, watch AI draw |
-| State persistence | Per-call (file-based) | Persistent across calls |
-| Startup overhead | New process per call | Single running instance |
-| Setup complexity | None | Install extension + connect |
-| Aseprite focus required | No | Yes (callbacks delayed when unfocused) |
-| Fallback | N/A | None while running: if the extension is not connected, tools return an error. Only a failure to *bind* the WebSocket port at startup falls back to CLI. |
-
-> [!TIP]
-> If the Aseprite extension is not connected, Live mode tools return a clear error message guiding you to connect. The existing CLI mode is always available as fallback by setting `ASEPRITE_MCP_MODE=cli` (or removing the variable).
-
 ### Environment Variables
 
 | Variable | Default | Description |
 |----------|---------|-------------|
 | `ASEPRITE_PATH` | auto-detected | Path to the Aseprite executable (overrides auto-detection via `PATH` and common install locations) |
-| `ASEPRITE_WORK_DIR` | `./work` | Session scratch directory (`.ase` files and exports). Relative to whatever cwd the MCP host spawns the process in, which is arbitrary and sometimes read-only — set an absolute, ASCII-only path |
+| `ASEPRITE_WORK_DIR` | `<repo>/work` | The server's state directory: sessions live in `<work>/sessions/<uuid>/` and expire after `ASEPRITE_SESSION_TIMEOUT`. Absolute by default, and it must stay ASCII-only — Aseprite rejects non-ASCII script paths and blames the Lua engine |
 | `ASEPRITE_SESSION_TIMEOUT` | `3600` | Seconds an idle session survives before the cleanup thread removes it |
 | `ASEPRITE_MCP_MODE` | `cli` | Execution mode: `cli` or `ws` |
 | `ASEPRITE_WS_HOST` | `127.0.0.1` | WebSocket server bind address |
@@ -236,13 +219,11 @@ Now AI can operate Aseprite directly — create a sprite, draw pixels, and you'l
 
 ##  Example Prompts
 
-The prompt and implementation notes behind each row of the table at the top.
+The prompt behind each row of the table at the top.
 
 **Chibi Knight · 4 directions × 6 frames · 32x32**
 
 > Use Aseprite MCP to generate a pixel art sprite sheet of a brave knight in silver armor holding a long sword, red plume and red cape. Four-direction walk cycle (down, up, left, right), 6 frames per direction, 32x32, flat colors, transparent background, 1px dark outline, light from the top-left.
-
-Legs swing in anti-phase on `sin(2πt)`, the body sinks on each contact beat, and the cape and plume sway with the same phase — amplitudes are deliberately exaggerated so the motion still reads at the 4x size the asset ships at. The cloth also lags by half a frame (follow-through): a pure sine sampled at 6 evenly spaced points is symmetric, so two pairs of frames quantise to identical pixels and the GIF encoder silently merges them down to 4 frames.
 
 ---
 
@@ -250,15 +231,11 @@ Legs swing in anti-phase on `sin(2πt)`, the body sinks on each contact beat, an
 
 > Use Aseprite MCP to generate a pixel art sprite sheet of a dark reaper in a tattered black robe wielding a giant scythe, glowing red eyes under the hood. Four-direction walk cycle (down, up, left, right), 6 frames per direction, 32x32, flat colors, transparent background, 1px dark outline.
 
-The reaper has no legs: the walk is carried by a travelling wave along the robe hem, a whole-body bob, and two bone feet alternating out from under the robe. In the front and back views the scythe blade must sweep outward from the body, otherwise it covers the hood entirely.
-
 ---
 
 **Slime Devourer · 4 directions × 5 frames · 32x32**
 
 > Use Aseprite MCP to generate a pixel art sprite sheet of a slime monster that devours its prey — green blob body, huge jaws, fangs. Four-direction devour animation (down, up, left, right), 5 frames per direction: idle → crouch → lunge with open maw → chomp → swallow. 32x32, flat colors, transparent background, sprite sheet layout.
-
-This one shows an **action animation**, not just a walk cycle: all 20 frames live in one `.ase`, split by direction into 4 tags (`devour_down`, …), with per-phase frame durations (200/100/80/90/220 ms — the chomp snaps fastest, the swallow lingers). The side view is modelled as a skull ellipse and a jaw ellipse counter-rotating about the mouth hinge, which is what makes the open mouth a notch cut through the silhouette instead of a hole floating inside the body.
 
 ---
 

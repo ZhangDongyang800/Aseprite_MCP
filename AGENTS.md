@@ -42,7 +42,7 @@ extension/main.lua   Aseprite extension; connects as WebSocket client, dofiles s
 ```
 
 - **Tool surface**: `apply_operations` (only mutation entry; batches run in one `app.transaction`), `inspect` (read-only preview + metrics), `run_lua` (escape hatch; requires `unsafe=true` + `confirmed=true`). Destructive ops (`clear_canvas`, `close_session`) require `confirmed=true`.
-- **Ops**: `create_sprite`, `open_sprite`, `save_sprite`, `close_session`, `draw_pixel`, `draw_rect`, `fill_region`, `clear_canvas` (defined in `src/v2/ops/`).
+- **Ops**: `create_sprite`, `open_sprite`, `save_sprite`, `close_session`, `draw_pixel`, `draw_rect`, `fill_region`, `clear_canvas`, `undo`, `redo` (defined in `src/v2/ops/`).
 - **CLI mode (default, `ASEPRITE_MCP_MODE=cli`)**: one `aseprite -b` process per call. No UI. State persists only via the session `.ase` file.
 - **Live mode (`ASEPRITE_MCP_MODE=ws`)**: operates `app.activeSprite` in the running Aseprite. Save is a no-op; callbacks can lag when the window is unfocused.
 
@@ -56,8 +56,9 @@ extension/main.lua   Aseprite extension; connects as WebSocket client, dofiles s
 - `AsepriteRunner` forces `encoding="utf-8"` with a 30s timeout (Windows GBK would otherwise corrupt JSON output).
 - v2 batch output is one JSON line after the `__MCP_JSON__` marker, parsed by `parse_result_stdout` (`src/v2/compile.py`); `inspect.lua` prints its metadata JSON on the last stdout line.
 - **`Sprite:saveCopyAs("x.png")` on a multi-frame document writes `x1.png … xN.png` and never `x.png`.** `inspect.lua` collapses its temp copy to a single frame (`deleteFrame`) before exporting, which is what keeps the agreed filenames intact; the tool's `frame` param picks the frame.
-- `run_lua` writes the snippet to `<work>/_run_lua.lua` and runs it under the same per-session lock as `apply_operations`/`inspect` (`Engine.session_lock`).
+- `run_lua` goes through `Engine.run_lua`: it writes the snippet to `<work>/_run_lua.lua` and runs it under the same per-session lock (`Engine.session_lock`) **and the same file snapshot** as `apply_operations` — a failing snippet rolls the `.ase` back, a successful one promotes it to `undo_backup.ase`.
 - CLI undo/redo are single-step file swaps (`work/<uuid>/undo_backup.ase` / `redo_backup.ase`); Live mode uses Aseprite's native history.
+- **Results are pruned, never echoed.** `op_results` carries only what the server learned at runtime (`_novelty` in `src/v2/executor.py` drops any field equal to the caller's own params, and drops the whole entry when nothing remains); `dry_run` returns just the verdict unless `verbose=true`; the two mutation tools pass `output_schema=None` so no schema rides along in every tool list. Don't reintroduce per-op echo — it cost ~61 bytes per op.
 
 ## Adding an op
 

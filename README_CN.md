@@ -68,7 +68,7 @@
 | `inspect` | 只读感知：返回画布预览图与量化指标（调色板、颜色数、包围盒、覆盖率、半透明与孤立像素）。动画文档用 `frame=N` 逐帧查看。永不修改文档。 |
 | `run_lua` | 逃逸舱：执行任意 Lua。需要 `unsafe=true` 且 `confirmed=true`。 |
 
-op 是注册在 `src/v2/ops/` 中的命名操作（Pydantic 参数模型），其 Lua 实现位于 `scripts/ops_*.lua`。内置 op：`create_sprite`、`open_sprite`、`save_sprite`、`close_session`、`draw_pixel`、`draw_rect`、`fill_region`、`clear_canvas`。
+op 是注册在 `src/v2/ops/` 中的命名操作（Pydantic 参数模型），其 Lua 实现位于 `scripts/ops_*.lua`。内置 op：`create_sprite`、`open_sprite`、`save_sprite`、`close_session`、`draw_pixel`、`draw_rect`、`fill_region`、`clear_canvas`、`undo`、`redo`。
 
 ```python
 apply_operations(ops=[

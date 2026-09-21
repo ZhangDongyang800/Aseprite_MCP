@@ -72,7 +72,7 @@ Exactly three MCP tools:
 | `inspect` | Read-only perception: returns a canvas preview image plus quantitative metrics (palette, color count, bounding box, coverage, semi-transparent and isolated pixels). On animated documents, `frame=N` steps through frames one at a time. Never modifies the document. |
 | `run_lua` | Escape hatch: run arbitrary Lua. Requires `unsafe=true` and `confirmed=true`. |
 
-Ops are named operations registered in `src/v2/ops/` (Pydantic parameter models) with their Lua implementations in `scripts/ops_*.lua`. Built-in ops: `create_sprite`, `open_sprite`, `save_sprite`, `close_session`, `draw_pixel`, `draw_rect`, `fill_region`, `clear_canvas`.
+Ops are named operations registered in `src/v2/ops/` (Pydantic parameter models) with their Lua implementations in `scripts/ops_*.lua`. Built-in ops: `create_sprite`, `open_sprite`, `save_sprite`, `close_session`, `draw_pixel`, `draw_rect`, `fill_region`, `clear_canvas`, `undo`, `redo`.
 
 ```python
 apply_operations(ops=[

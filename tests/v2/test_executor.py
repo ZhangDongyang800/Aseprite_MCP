@@ -86,6 +86,68 @@ def test_apply_writes_batch_and_backs_up(engine):
     runner.run_script_path.assert_called_once()
 
 
+def test_echo_of_the_callers_own_params_is_dropped(engine):
+    eng, sm, runner = engine
+    sid = sm.create_session(8, 8)
+    _make_ase(sm, sid)
+    runner.run_script_path.return_value = _payload([
+        {"op": "draw_pixel", "ok": True, "data": {"x": 1, "y": 1, "color": "#FF0000"}},
+    ])
+    env = eng.apply(sid, [{"op": "draw_pixel", "x": 1, "y": 1, "color": "#FF0000"}])
+    assert env.ok is True
+    assert env.op_results == []
+
+
+def test_fields_the_server_learned_survive(engine):
+    eng, sm, runner = engine
+    sid = sm.create_session(8, 8)
+    _make_ase(sm, sid)
+    runner.run_script_path.return_value = _payload([
+        {"op": "draw_pixel", "ok": True,
+         "data": {"x": 1, "y": 1, "color": "#FF0000", "shifted": 2}},
+    ])
+    env = eng.apply(sid, [{"op": "draw_pixel", "x": 1, "y": 1, "color": "#FF0000"}])
+    assert [r.data for r in env.op_results] == [{"shifted": 2}]
+
+
+def test_failed_op_keeps_its_data_and_original_index(engine):
+    """Dropping earlier echoes must not renumber the op the model has to fix."""
+    eng, sm, runner = engine
+    sid = sm.create_session(8, 8)
+    _make_ase(sm, sid)
+    runner.run_script_path.return_value = _payload(
+        [
+            {"op": "draw_pixel", "ok": True, "data": {"x": 1, "y": 1, "color": "#FF0000"}},
+            {"op": "draw_pixel", "ok": False, "data": {"x": 9, "y": 9, "error": "out of range"}},
+        ],
+        error="out of range",
+    )
+    env = eng.apply(sid, [
+        {"op": "draw_pixel", "x": 1, "y": 1, "color": "#FF0000"},
+        {"op": "draw_pixel", "x": 9, "y": 9, "color": "#FF0000"},
+    ])
+    assert env.ok is False
+    assert env.error.op_index == 1
+    assert env.op_results[-1].ok is False
+    assert env.op_results[-1].data["error"] == "out of range"
+
+
+def test_dry_run_reports_only_the_verdict_unless_verbose(engine):
+    eng, sm, runner = engine
+    sid = sm.create_session(8, 8)
+    _make_ase(sm, sid)
+    ops = [{"op": "draw_pixel", "x": 1, "y": 1, "color": "#FF0000"}]
+
+    quiet = eng.apply(sid, ops, dry_run=True)
+    assert quiet.ok is True
+    assert quiet.op_results == []
+    runner.run_script_path.assert_not_called()
+
+    loud = eng.apply(sid, ops, dry_run=True, verbose=True)
+    assert loud.op_results[0].op == "plan"
+    assert loud.op_results[0].data[0]["params"]["color"] == "#FF0000"
+
+
 def test_unknown_op_returns_invalid_args(engine):
     eng, sm, _ = engine
     sid = sm.create_session(8, 8)

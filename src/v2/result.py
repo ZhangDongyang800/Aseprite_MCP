@@ -44,6 +44,20 @@ class UndoInfo(BaseModel):
     available: bool = False
 
 
+def script_diagnostics(result: dict) -> tuple[str, str]:
+    """(message, hint) for a failed Aseprite run.
+
+    Headless Aseprite writes Lua errors to stdout and leaves stderr empty, so stdout has to be
+    reported too or the caller is handed a bare exit code with nothing to act on.
+    """
+    detail = "\n".join(
+        part for part in ((result.get("stdout") or "").strip(),
+                          (result.get("stderr") or "").strip()) if part
+    )[:2000]
+    message = result.get("error") or detail or "Aseprite script failed"
+    return message, detail
+
+
 class Envelope(BaseModel):
     ok: bool
     session_id: Optional[str] = None

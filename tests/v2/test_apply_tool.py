@@ -143,3 +143,51 @@ def test_apply_operations_undo_must_be_single_op(tools):
     assert env.ok is False
     assert env.error.code == ErrorCode.INVALID_ARGS
     assert env.error.hint == "undo/redo must be a single-op batch"
+
+
+def test_mutation_tools_publish_no_output_schema(tmp_path):
+    """No output schema: the schema itself is standing context in every client session.
+
+    FastMCP also mirrors a dict-returning tool into structuredContent, but that is the client's
+    programmatic channel, not what the model reads, so only the schema is worth paying to remove.
+    """
+    import asyncio
+    import json
+    from unittest.mock import MagicMock
+
+    from fastmcp import Client, FastMCP
+
+    from src.config import Config
+    from src.session import SessionManager
+    from src.v2.tools import register_v2_tools
+
+    config = Config()
+    config.work_dir = tmp_path
+    config.mode = "cli"
+    sm = SessionManager(config)
+    sid = sm.create_session(8, 8)
+    sm.get_ase_path(sid).write_bytes(b"ASE")
+    runner = MagicMock()
+    runner.run_script_path.return_value = {
+        "success": True,
+        "stdout": '__MCP_JSON__{"ops":[{"op":"draw_pixel","ok":true,"data":{"x":1,"y":1,'
+                  '"color":"#FF0000"}}],"saved":true,"error":null}',
+        "stderr": "",
+    }
+    mcp = FastMCP("probe")
+    register_v2_tools(mcp, sm, runner, config)
+
+    async def probe():
+        async with Client(mcp) as client:
+            published = {t.name: t for t in await client.list_tools()}
+            result = await client.call_tool("apply_operations", {
+                "session_id": sid,
+                "ops": [{"op": "draw_pixel", "x": 1, "y": 1, "color": "#FF0000"}],
+            })
+        return published, result
+
+    published, result = asyncio.run(probe())
+    assert published["apply_operations"].output_schema is None
+    assert published["run_lua"].output_schema is None
+    # the caller's own params must not come back, however the client renders the result
+    assert json.loads(result.content[0].text)["op_results"] == []

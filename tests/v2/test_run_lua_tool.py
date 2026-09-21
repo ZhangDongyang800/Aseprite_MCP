@@ -105,6 +105,73 @@ def test_run_lua_runner_failure(tools):
     assert env.error.hint == "trace"
 
 
+def test_run_lua_reports_the_lua_error_text(tools):
+    """Headless Aseprite writes Lua errors to stdout, so they must reach the hint."""
+    captured, sm, runner = tools
+    sid = sm.create_session(8, 8)
+    sm.get_ase_path(sid).write_bytes(b"ASE")
+    runner.run_script.return_value = {
+        "success": False, "stdout": "_run_lua.lua:1: attempt to call a nil value",
+        "stderr": "", "error": "Aseprite exited with code -1",
+    }
+    env = captured["run_lua"](
+        session_id=sid, code="app.bad()", unsafe=True, confirmed=True
+    )
+    assert env.ok is False
+    assert "attempt to call a nil value" in env.error.hint
+
+
+def test_failed_run_lua_restores_the_document(tools):
+    captured, sm, runner = tools
+    sid = sm.create_session(8, 8)
+    path = sm.get_ase_path(sid)
+    path.write_bytes(b"GOOD")
+
+    def corrupt(*_a, **_k):
+        path.write_bytes(b"CORRUPTED")
+        return {"success": False, "stdout": "boom", "stderr": "", "error": "exit 1"}
+
+    runner.run_script.side_effect = corrupt
+    env = captured["run_lua"](session_id=sid, code="x", unsafe=True, confirmed=True)
+    assert env.ok is False
+    assert path.read_bytes() == b"GOOD"
+
+
+def test_successful_run_lua_leaves_an_undo_backup(tools):
+    import os
+
+    captured, sm, runner = tools
+    sid = sm.create_session(8, 8)
+    path = sm.get_ase_path(sid)
+    path.write_bytes(b"BEFORE")
+
+    def rewrite(*_a, **_k):
+        path.write_bytes(b"AFTER")
+        ns = path.stat().st_atime_ns + 10 ** 9
+        os.utime(path, ns=(ns, ns))
+        return {"success": True, "stdout": "", "stderr": ""}
+
+    runner.run_script.side_effect = rewrite
+    env = captured["run_lua"](session_id=sid, code="x", unsafe=True, confirmed=True)
+    assert env.ok is True
+    assert env.changed is True
+    assert path.read_bytes() == b"AFTER"
+    assert (sm.get_work_dir(sid) / "undo_backup.ase").read_bytes() == b"BEFORE"
+    assert env.undo.available is True
+
+
+def test_run_lua_that_wrote_nothing_is_not_reported_as_changed(tools):
+    captured, sm, runner = tools
+    sid = sm.create_session(8, 8)
+    sm.get_ase_path(sid).write_bytes(b"ASE")
+    runner.run_script.return_value = {"success": True, "stdout": "noop", "stderr": ""}
+    env = captured["run_lua"](session_id=sid, code="print(1)", unsafe=True, confirmed=True)
+    assert env.ok is True
+    assert env.changed is False
+    assert env.undo.available is False
+    assert not (sm.get_work_dir(sid) / "undo_backup.ase").exists()
+
+
 def test_engine_session_lock_serializes(tools):
     captured, sm, _ = tools
     engine = captured["_engine"]

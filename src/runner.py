@@ -17,16 +17,16 @@ from dataclasses import dataclass
 from src.config import Config
 
 
-def _aseprite_env(work_dir: Path) -> dict:
+def _aseprite_env(appdata_dir: Path) -> dict:
     """Aseprite aborts at startup when APPDATA is unset, so hosts that strip it
     (stdio MCP children) fail with a misleading "Error creating directory"."""
     env = dict(os.environ)
     missing = [k for k in ("APPDATA", "LOCALAPPDATA") if not env.get(k)]
     if missing:
-        cfg = Path(work_dir) / "appdata"
-        (cfg / "Aseprite").mkdir(parents=True, exist_ok=True)
+        cfg = appdata_dir / "Aseprite"
+        cfg.mkdir(parents=True, exist_ok=True)
         for k in missing:
-            env[k] = str(cfg)
+            env[k] = str(appdata_dir)
     return env
 
 
@@ -78,7 +78,7 @@ class AsepriteRunner:
                 text=True,
                 encoding="utf-8",
                 errors="replace",
-                env=_aseprite_env(self.config.work_dir),
+                env=_aseprite_env(self.config.appdata_dir),
                 timeout=30,  # 30 秒超时
             )
 
@@ -140,7 +140,7 @@ class AsepriteRunner:
         try:
             result = subprocess.run(
                 cmd, capture_output=True, text=True, encoding="utf-8",
-                errors="replace", env=_aseprite_env(self.config.work_dir),
+                errors="replace", env=_aseprite_env(self.config.appdata_dir),
                 timeout=30,
             )
             if result.returncode == 0:

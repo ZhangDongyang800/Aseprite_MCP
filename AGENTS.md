@@ -22,8 +22,10 @@ No linter, formatter, or typechecker is configured — do not invent one.
 ```
 server.py            create_server(): builds Config/runner/SessionManager, registers the v2
                      three-tool surface + resources + prompts; starts session cleanup thread
-src/config.py        env vars -> Config; scripts_dir is fixed at <root>/scripts (not env-configurable)
-src/session.py       SessionManager: work/<uuid>/canvas.ase, expiry
+src/config.py        env vars -> Config; scripts_dir is fixed at <root>/scripts (not env-configurable);
+                     work_dir defaults to <root>/work and is resolved to an absolute path
+src/session.py       SessionManager: <work>/sessions/<uuid>/canvas.ase; expiry sweeps the
+                     filesystem, not the in-memory registry
 src/runner.py        AsepriteRunner (CLI subprocess) and WebSocketRunner (bridge); identical run_script()
 src/bridge.py        WebSocket server in a background thread; tab-delimited text protocol
 src/v2/registry.py   REGISTRY (OpRegistry): single source of truth — OpSpec = name / category /
@@ -57,8 +59,9 @@ extension/main.lua   Aseprite extension; connects as WebSocket client, dofiles s
 - `AsepriteRunner` forces `encoding="utf-8"` with a 30s timeout (Windows GBK would otherwise corrupt JSON output).
 - v2 batch output is one JSON line after the `__MCP_JSON__` marker, parsed by `parse_result_stdout` (`src/v2/compile.py`); `inspect.lua` prints its metadata JSON on the last stdout line.
 - **`Sprite:saveCopyAs("x.png")` on a multi-frame document writes `x1.png … xN.png` and never `x.png`.** `inspect.lua` collapses its temp copy to a single frame (`deleteFrame`) before exporting, which is what keeps the agreed filenames intact; the tool's `frame` param picks the frame.
-- `run_lua` goes through `Engine.run_lua`: it writes the snippet to `<work>/_run_lua.lua` and runs it under the same per-session lock (`Engine.session_lock`) **and the same file snapshot** as `apply_operations` — a failing snippet rolls the `.ase` back, a successful one promotes it to `undo_backup.ase`.
-- CLI undo/redo are single-step file swaps (`work/<uuid>/undo_backup.ase` / `redo_backup.ase`); Live mode uses Aseprite's native history.
+- `run_lua` goes through `Engine.run_lua`: it writes the snippet to `<work>/sessions/<id>/_run_lua.lua` and runs it under the same per-session lock (`Engine.session_lock`) **and the same file snapshot** as `apply_operations` — a failing snippet rolls the `.ase` back, a successful one promotes it to `undo_backup.ase`.
+- CLI undo/redo are single-step file swaps (`<work>/sessions/<uuid>/undo_backup.ase` / `redo_backup.ase`); Live mode uses Aseprite's native history.
+- **`<work>` is the server's state directory — nothing else belongs there.** Sessions live in `<work>/sessions/<uuid>/` (only UUID-named dirs are ever swept, so a stray file is never mistaken for a session) and the stripped-`APPDATA` stand-in lives in `<work>/.appdata`. Agents drawing sprites should keep their own generator files wherever they like and hand them over by absolute path (`paint_grid`, `run_lua`'s `dofile`).
 - **Results are pruned, never echoed.** `op_results` carries only what the server learned at runtime (`_novelty` in `src/v2/executor.py` drops any field equal to the caller's own params, and drops the whole entry when nothing remains); `dry_run` returns just the verdict unless `verbose=true`; the two mutation tools pass `output_schema=None` so no schema rides along in every tool list. Don't reintroduce per-op echo — it cost ~61 bytes per op.
 
 ## Adding an op

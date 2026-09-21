@@ -60,3 +60,6 @@ docs/
 
 # 会话临时产物（demo 草稿、预览图、评审 diff）
 .superpowers/
+
+# 服务器会话状态目录（ASEPRITE_WORK_DIR 的默认值）
+/work/

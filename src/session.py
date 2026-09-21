@@ -4,6 +4,7 @@
 会话通过 session_id（UUID）标识，支持创建、查询、销毁和超时清理。
 """
 
+import re
 import uuid
 import time
 import shutil
@@ -12,6 +13,9 @@ from dataclasses import dataclass, field
 
 from src.config import Config
 
+_UUID_DIR = re.compile(
+    r"[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}")
+
 
 @dataclass
 class SessionManager:
@@ -19,7 +23,7 @@ class SessionManager:
 
     每个会话维护：
     - session_id: UUID 字符串
-    - 工作目录: <work_dir>/<session_id>/
+    - 工作目录: <work_dir>/sessions/<session_id>/
     - .ase 文件: <工作目录>/canvas.ase
     - 画布信息: width, height, color_mode
     - 时间戳: created_at, last_activity
@@ -47,8 +51,14 @@ class SessionManager:
         now = time.time()
 
         # 创建工作目录
-        work_dir = self.config.work_dir / session_id
-        work_dir.mkdir(parents=True, exist_ok=True)
+        work_dir = self.config.sessions_dir / session_id
+        try:
+            work_dir.mkdir(parents=True, exist_ok=True)
+        except OSError as exc:
+            raise OSError(
+                f"cannot create the session directory {work_dir}: {exc}. "
+                f"Set ASEPRITE_WORK_DIR to a writable, ASCII-only path."
+            ) from exc
 
         # 记录会话数据
         self._sessions[session_id] = {
@@ -153,17 +163,35 @@ class SessionManager:
             })
         return result
 
+    def _last_seen(self, entry: Path) -> float:
+        """Newest mtime in a session directory; in-place .ase writes do not bump the parent."""
+        newest = entry.stat().st_mtime
+        for child in entry.iterdir():
+            try:
+                newest = max(newest, child.stat().st_mtime)
+            except OSError:
+                continue
+        return newest
+
     def cleanup_expired(self) -> None:
-        """清理超时会话。
+        """Drop session directories that have gone quiet for session_timeout seconds.
 
-        删除最后活动时间超过 session_timeout 的会话。
+        Scans the filesystem instead of the in-memory registry, so sessions orphaned by an
+        earlier server process are collected too. Only UUID-named directories are touched —
+        anything else the user keeps under the work dir is none of our business. The work dir
+        root is scanned as well so sessions from before the `sessions/` layout still expire.
         """
-        now = time.time()
-        expired_ids = []
-
-        for session_id, data in self._sessions.items():
-            if now - data["last_activity"] > self.config.session_timeout:
-                expired_ids.append(session_id)
-
-        for session_id in expired_ids:
-            self.close_session(session_id)
+        cutoff = time.time() - self.config.session_timeout
+        for root in (self.config.sessions_dir, self.config.work_dir):
+            if not root.is_dir():
+                continue
+            for entry in root.iterdir():
+                if not entry.is_dir() or not _UUID_DIR.fullmatch(entry.name):
+                    continue
+                try:
+                    stale = self._last_seen(entry) < cutoff
+                except OSError:
+                    continue
+                if stale:
+                    shutil.rmtree(entry, ignore_errors=True)
+                    self._sessions.pop(entry.name, None)

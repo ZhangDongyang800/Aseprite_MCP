@@ -4,8 +4,26 @@
 """
 
 import os
+import sys
 from pathlib import Path
 from dataclasses import dataclass
+
+_REPO_ROOT = Path(__file__).resolve().parents[1]
+
+
+def _warn_unusable_work_dir(path: Path) -> None:
+    """Complain at startup instead of failing every later call obscurely.
+
+    Aseprite cannot load a script whose path contains non-ASCII characters and reports it as a
+    missing Lua engine, which reads as a build problem rather than a configuration one.
+    """
+    if not str(path).isascii():
+        print(
+            f"WARNING: ASEPRITE_WORK_DIR is not ASCII-only: {path}\n"
+            f"Aseprite will reject script paths containing non-ASCII characters and report it "
+            f"as a missing Lua engine. Point ASEPRITE_WORK_DIR at an ASCII path.",
+            file=sys.stderr,
+        )
 
 
 @dataclass
@@ -14,7 +32,7 @@ class Config:
 
     通过环境变量可覆盖默认值：
     - ASEPRITE_PATH: Aseprite 可执行文件路径
-    - ASEPRITE_WORK_DIR: 会话工作目录
+    - ASEPRITE_WORK_DIR: 会话工作目录根（默认 <repo>/work）
     - ASEPRITE_SESSION_TIMEOUT: 会话超时时间（秒）
     - ASEPRITE_MCP_MODE: 执行模式（"cli" 或 "ws"），默认 "cli"
     - ASEPRITE_WS_HOST: WebSocket server 监听地址，默认 "127.0.0.1"
@@ -52,11 +70,14 @@ class Config:
                 or "aseprite"
             )
 
-        # 会话工作目录
+        # 会话工作目录：默认落在仓库根下。相对路径会解析到宿主给进程的任意 cwd，
+        # 那个目录既可能不可写，也可能把会话文件撒到意想不到的地方。
         if self.work_dir is None:
             self.work_dir = Path(
-                os.environ.get("ASEPRITE_WORK_DIR", "./work")
+                os.environ.get("ASEPRITE_WORK_DIR") or _REPO_ROOT / "work"
             )
+        self.work_dir = Path(self.work_dir).expanduser().resolve()
+        _warn_unusable_work_dir(self.work_dir)
 
         # 会话超时时间
         if self.session_timeout is None:
@@ -77,3 +98,14 @@ class Config:
             self.ws_host = os.environ.get("ASEPRITE_WS_HOST", "127.0.0.1")
         if self.ws_port is None:
             self.ws_port = int(os.environ.get("ASEPRITE_WS_PORT", "9001"))
+
+    # Properties rather than fields: tests and callers reassign work_dir after construction.
+    @property
+    def sessions_dir(self) -> Path:
+        """Where the server keeps session state. Nothing else belongs here."""
+        return self.work_dir / "sessions"
+
+    @property
+    def appdata_dir(self) -> Path:
+        """Stand-in %APPDATA% for hosts that strip it; infrastructure, not session data."""
+        return self.work_dir / ".appdata"

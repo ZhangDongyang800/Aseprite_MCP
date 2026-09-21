@@ -76,6 +76,8 @@ def create_server() -> FastMCP:
 
     # 创建核心组件
     session_manager = SessionManager(config)
+    # 上一代进程遗留的会话目录不会被内存注册表看见，启动时先按时间扫一遍
+    session_manager.cleanup_expired()
 
     # 创建 FastMCP 服务器
     mcp = FastMCP("AsepriteMCP")

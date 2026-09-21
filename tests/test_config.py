@@ -46,23 +46,35 @@ def test_custom_aseprite_path_via_env():
         assert config.aseprite_path == "/custom/path/aseprite.exe"
 
 
-def test_default_work_dir():
-    """测试默认工作目录。"""
+def test_default_work_dir_is_absolute_under_the_repo():
+    """The default must not depend on the cwd the MCP host happened to spawn us in."""
     from src.config import Config
 
     with patch.dict(os.environ, {}, clear=False):
         os.environ.pop("ASEPRITE_WORK_DIR", None)
         config = Config()
-        assert config.work_dir == Path("./work")
+        assert config.work_dir.is_absolute()
+        assert config.work_dir.name == "work"
+        assert config.work_dir.parent == Path(__file__).resolve().parents[1]
 
 
 def test_custom_work_dir_via_env():
-    """测试通过环境变量自定义工作目录。"""
+    """测试通过环境变量自定义工作目录（解析成绝对路径）。"""
     from src.config import Config
 
     with patch.dict(os.environ, {"ASEPRITE_WORK_DIR": "/tmp/custom_work"}):
         config = Config()
-        assert config.work_dir == Path("/tmp/custom_work")
+        assert config.work_dir.is_absolute()
+        assert config.work_dir.name == "custom_work"
+
+
+def test_work_dir_layout_separates_sessions_from_infrastructure():
+    from src.config import Config
+
+    with patch.dict(os.environ, {"ASEPRITE_WORK_DIR": str(Path("D:/x/ase_work"))}):
+        config = Config()
+        assert config.sessions_dir == config.work_dir / "sessions"
+        assert config.appdata_dir == config.work_dir / ".appdata"
 
 
 def test_default_session_timeout():

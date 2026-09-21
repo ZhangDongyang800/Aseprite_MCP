@@ -1,5 +1,6 @@
 """SessionManager 测试。"""
 
+import os
 import time
 from pathlib import Path
 import pytest
@@ -146,3 +147,63 @@ def test_cleanup_does_not_remove_active_sessions(session_manager):
     session_manager.cleanup_expired()
 
     assert work_dir.exists()
+
+
+def test_sessions_live_under_a_dedicated_subdirectory(session_manager):
+    """The work dir root stays clean, so a stray file can never look like a session."""
+    session_id = session_manager.create_session(width=8, height=8)
+    assert session_manager.get_work_dir(session_id).parent == (
+        session_manager.config.sessions_dir)
+
+
+def test_cleanup_collects_orphans_from_an_earlier_process(session_manager):
+    """A session dir the in-memory registry never saw must still expire."""
+    import uuid
+
+    session_manager.config.session_timeout = 0.1
+    orphan = session_manager.config.sessions_dir / str(uuid.uuid4())
+    orphan.mkdir(parents=True)
+    (orphan / "canvas.ase").write_bytes(b"OLD")
+    old = int((time.time() - 60) * 1e9)
+    os.utime(orphan, ns=(old, old))
+    os.utime(orphan / "canvas.ase", ns=(old, old))
+
+    session_manager.cleanup_expired()
+
+    assert not orphan.exists()
+
+
+def test_cleanup_collects_pre_layout_sessions_from_the_work_dir_root(session_manager):
+    """Sessions written before the `sessions/` layout must not become permanent garbage."""
+    import uuid
+
+    session_manager.config.session_timeout = 0.1
+    legacy = session_manager.config.work_dir / str(uuid.uuid4())
+    legacy.mkdir(parents=True)
+    keep = session_manager.config.work_dir / "notes"
+    keep.mkdir()
+    old = int((time.time() - 60) * 1e9)
+    os.utime(legacy, ns=(old, old))
+
+    session_manager.cleanup_expired()
+
+    assert not legacy.exists()
+    assert keep.exists()
+
+
+def test_cleanup_never_touches_files_the_server_does_not_own(session_manager):
+    """Agents drop scratch next to the sessions; the sweep must ignore anything not UUID-named."""
+    session_manager.config.session_timeout = 0.1
+    root = session_manager.config.sessions_dir
+    root.mkdir(parents=True, exist_ok=True)
+    stray_file = root / "hero_walk.png"
+    stray_file.write_bytes(b"PNG")
+    stray_dir = root / "generator"
+    stray_dir.mkdir()
+    old = int((time.time() - 60) * 1e9)
+    for p in (stray_file, stray_dir):
+        os.utime(p, ns=(old, old))
+
+    session_manager.cleanup_expired()
+
+    assert stray_file.exists() and stray_dir.exists()

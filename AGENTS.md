@@ -42,7 +42,7 @@ extension/main.lua   Aseprite extension; connects as WebSocket client, dofiles s
 ```
 
 - **Tool surface**: `apply_operations` (only mutation entry; batches run in one `app.transaction`), `inspect` (read-only preview + metrics), `run_lua` (escape hatch; requires `unsafe=true` + `confirmed=true`). Destructive ops (`clear_canvas`, `close_session`) require `confirmed=true`.
-- **Ops**: `create_sprite`, `open_sprite`, `save_sprite`, `close_session`, `draw_pixel`, `draw_rect`, `fill_region`, `clear_canvas`, `undo`, `redo` (defined in `src/v2/ops/`).
+- **Ops**: `create_sprite`, `open_sprite`, `save_sprite`, `close_session`, `draw_pixel`, `draw_rect`, `fill_region`, `clear_canvas`, `undo`, `redo` (defined in `src/v2/ops/`); structural ops `add_frames`, `set_durations`, `add_tag` and file-driven `paint_grid` live in `src/v2/ops/structure_ops.py` / `draw_ops.py`.
 - **CLI mode (default, `ASEPRITE_MCP_MODE=cli`)**: one `aseprite -b` process per call. No UI. State persists only via the session `.ase` file.
 - **Live mode (`ASEPRITE_MCP_MODE=ws`)**: operates `app.activeSprite` in the running Aseprite. Save is a no-op; callbacks can lag when the window is unfocused.
 
@@ -50,8 +50,9 @@ extension/main.lua   Aseprite extension; connects as WebSocket client, dofiles s
 
 - **`--script-param` MUST precede `--script`**, or `app.params` is empty. Order is enforced in `AsepriteRunner.run_script`; still applies to the legacy scripts and `mcp_run_lua.lua`.
 - Scripts read `app.params["key"]`; all values are strings. Aseprite Lua has **no `loadstring`**, so params are passed as `key=value` — v2 instead compiles op params to Lua literals (`src/v2/compile.py`).
+- **`json.decode` returns a userdata, not a table** — `pairs()`, `#` and field access do not work on it. Data files handed to Lua ops must be Lua table files loaded with `dofile` (see `paint_grid`).
 - Every script's first lines must conditionally load `mcp_common.lua` only if `not _G._mcp_common_loaded` (Live mode preloads it, CLI mode does not).
-- Use `_mcp_get_sprite(file)`, `_mcp_get_target_image(sprite, layer, frame)`, then `_mcp_maybe_save(sprite, file)`. `layer`/`frame` are **1-based**; missing cels are auto-created, but **layers and frames are not** — a fresh sprite has one layer and one frame, so `layer=2` or `frame=2` errors out until you add them via `run_lua`.
+- Use `_mcp_get_sprite(file)`, `_mcp_get_target_image(sprite, layer, frame)`, then `_mcp_maybe_save(sprite, file)`. `layer`/`frame` are **1-based**; missing cels are auto-created, but **layers and frames are not** — a fresh sprite has one layer and one frame, so `frame=2` needs `add_frames` first (`layer=2` still needs `run_lua`).
 - `apply_operations` validates every op and enforces the confirmation gate **before** creating a session; with no `session_id`, a first `create_sprite`/`open_sprite` auto-creates the session and injects `file`.
 - `AsepriteRunner` forces `encoding="utf-8"` with a 30s timeout (Windows GBK would otherwise corrupt JSON output).
 - v2 batch output is one JSON line after the `__MCP_JSON__` marker, parsed by `parse_result_stdout` (`src/v2/compile.py`); `inspect.lua` prints its metadata JSON on the last stdout line.

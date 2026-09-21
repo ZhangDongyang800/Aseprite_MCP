@@ -39,6 +39,12 @@ class FillRegion(_Targeted):
     color: str = Field(pattern=_HEX)
 
 
+class PaintGrid(_Targeted):
+    path: str
+    x: int = Field(default=0, ge=0)
+    y: int = Field(default=0, ge=0)
+
+
 def register() -> None:
     REGISTRY.register(OpSpec("clear_canvas", "draw", ClearCanvas,
                              lua="_mcp_op_clear_canvas", mutating=True, destructive=True))
@@ -48,6 +54,8 @@ def register() -> None:
                              lua="_mcp_op_draw_rect", mutating=True))
     REGISTRY.register(OpSpec("fill_region", "draw", FillRegion,
                              lua="_mcp_op_fill_region", mutating=True))
+    REGISTRY.register(OpSpec("paint_grid", "draw", PaintGrid,
+                             lua="_mcp_op_paint_grid", mutating=True))
 
 
 register()

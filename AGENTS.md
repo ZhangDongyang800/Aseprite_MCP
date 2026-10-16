@@ -11,11 +11,16 @@ pytest                       # all tests; fast, no Aseprite needed
 pytest -m "not e2e"          # skip tests that need real Aseprite
 pytest -m e2e                # real Aseprite; auto-skips if not found
 pytest tests/v2/test_apply_tool.py::test_apply_operations_happy_path -v
+
+# on-machine harnesses (tests/live/, NOT collected by pytest - real Aseprite, real exit code)
+python tests/live/probe_server_version.py      # is this build behaving as specified?
+python tests/live/live_smoke.py --all          # 8 regression scenarios incl. big-canvas timing
+python tests/live/ws_probe.py                  # websocket bridge: protocol, simulated ext, fallback
 ```
 
 No linter, formatter, or typechecker is configured — do not invent one.
 
-`ASEPRITE_PATH` overrides Aseprite auto-detection (`src/aseprite_locate.py`: env var → `PATH` → common install locations, see `src/config.py`). Set it to run e2e or use the server for real.
+`ASEPRITE_PATH` overrides Aseprite auto-detection (`src/aseprite_locate.py`: env var → `PATH` → common install locations, see `src/config.py`). Set it to run e2e, the `tests/live/` harnesses, or the server for real.
 
 ## Architecture
 
@@ -42,6 +47,8 @@ scripts/ops_*.lua    op implementations grouped by category, named _mcp_op_<name
 scripts/inspect.lua  read-only perception export (works on a temp copy; never modifies the document)
 scripts/mcp_run_lua.lua / scripts/undo.lua / scripts/redo.lua  run_lua entry + ws-mode native history
 extension/main.lua   Aseprite extension; connects as WebSocket client, dofiles scripts, captures print()
+tests/v2/            pytest suite (mocked runner; Lua is never executed)
+tests/live/          on-machine harnesses, run by hand against real Aseprite (see its README)
 ```
 
 - **Tool surface**: `apply_operations` (only mutation entry; batches run in one `app.transaction`), `inspect` (read-only preview + metrics), `run_lua` (escape hatch; requires `unsafe=true` + `confirmed=true`). Destructive ops (`clear_canvas`, `close_session`) require `confirmed=true`, and so does `paint_grid` whose grid file lives outside the work directory (it `dofile`s Lua, same power as `run_lua`).

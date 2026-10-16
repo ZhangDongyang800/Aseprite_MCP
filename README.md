@@ -85,7 +85,7 @@ apply_operations(ops=[
 ])
 ```
 
-All drawing ops accept `layer` / `frame` (1-based, default 1/1). A batch runs inside one `app.transaction`, so `atomic=true` (the default) rolls the whole batch back if any op fails.
+All drawing ops accept `layer` / `frame` (1-based, default 1/1). A batch runs inside one `app.transaction`, so `atomic=true` (the default) rolls the whole batch back if any op fails. With `atomic=false` the ops that worked are saved and listed one by one, the failed one keeps its reason, and the envelope returns `ok=true` with a `partial success: N of M ops ...` warning.
 
 > [!TIP]
 > `inspect` is the core of the workflow: after drawing, AI calls it to "see" the canvas, analyze it, and decide whether to fix it, forming a **draw → inspect → analyze → fix** loop.
@@ -209,8 +209,9 @@ Now AI can operate Aseprite directly — create a sprite, draw pixels, and you'l
 | Variable | Default | Description |
 |----------|---------|-------------|
 | `ASEPRITE_PATH` | auto-detected | Path to the Aseprite executable (overrides auto-detection via `PATH` and common install locations) |
-| `ASEPRITE_WORK_DIR` | `<repo>/work` | The server's state directory: sessions live in `<work>/sessions/<uuid>/` and expire after `ASEPRITE_SESSION_TIMEOUT`. Absolute by default, and it must stay ASCII-only — Aseprite rejects non-ASCII script paths and blames the Lua engine |
+| `ASEPRITE_WORK_DIR` | `<repo>/work` | The server's state directory: sessions live in `<work>/sessions/<uuid>/` and expire after `ASEPRITE_SESSION_TIMEOUT`. Absolute by default; non-ASCII paths work on current Aseprite builds, but older ones reject them and blame the Lua engine |
 | `ASEPRITE_SESSION_TIMEOUT` | `3600` | Seconds an idle session survives before the cleanup thread removes it |
+| `ASEPRITE_TIMEOUT` | `30` | Seconds one Aseprite call may take. Raise it for big canvases (`fill_region` on 4096², blur); a timeout rolls the batch back and says so |
 | `ASEPRITE_MCP_MODE` | `cli` | Execution mode: `cli` or `ws` |
 | `ASEPRITE_WS_HOST` | `127.0.0.1` | WebSocket server bind address |
 | `ASEPRITE_WS_PORT` | `9001` | WebSocket server port |

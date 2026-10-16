@@ -81,7 +81,7 @@ apply_operations(ops=[
 ])
 ```
 
-所有绘制 op 都接受 `layer` / `frame`（从 1 开始计数，默认 1/1）。一批 op 在单个 `app.transaction` 中执行，因此默认的 `atomic=true` 会在任意 op 失败时回滚整批。
+所有绘制 op 都接受 `layer` / `frame`（从 1 开始计数，默认 1/1）。一批 op 在单个 `app.transaction` 中执行，因此默认的 `atomic=true` 会在任意 op 失败时回滚整批。`atomic=false` 时成功的部分会真正保存并逐项列出，失败的那条保留原因，信封返回 `ok=true` 并附带 `partial success: N of M ops ...` 警告。
 
 > [!TIP]
 > `inspect` 是工作流的核心：绘制后，AI 调用它来"看到"画布、分析它，并决定是否修正，形成 **操作 → 检查 → 分析 → 修正** 的循环。
@@ -205,8 +205,9 @@ MCP 服务器运行后，打开 Aseprite 并点击：
 | 变量 | 默认值 | 说明 |
 |----------|---------|-------------|
 | `ASEPRITE_PATH` | 自动检测 | Aseprite 可执行文件路径（优先于 `PATH` 与常见安装位置的自动检测） |
-| `ASEPRITE_WORK_DIR` | `<repo>/work` | 服务器状态目录：会话放在 `<work>/sessions/<uuid>/`，超过 `ASEPRITE_SESSION_TIMEOUT` 自动回收。默认就是绝对路径，且必须保持纯英文——Aseprite 会拒绝含非 ASCII 的脚本路径，却把锅甩给 Lua 引擎 |
+| `ASEPRITE_WORK_DIR` | `<repo>/work` | 服务器状态目录：会话放在 `<work>/sessions/<uuid>/`，超过 `ASEPRITE_SESSION_TIMEOUT` 自动回收。默认就是绝对路径；当前 Aseprite 版本能处理含非 ASCII 的路径，老版本会拒绝并把锅甩给 Lua 引擎 |
 | `ASEPRITE_SESSION_TIMEOUT` | `3600` | 空闲会话被清理线程回收前的存活秒数 |
+| `ASEPRITE_TIMEOUT` | `30` | 单次 Aseprite 调用的秒数上限。大画布（4096² 洪泛填充、模糊）请调高；超时会整体回滚并明确告知 |
 | `ASEPRITE_MCP_MODE` | `cli` | 执行模式：`cli` 或 `ws` |
 | `ASEPRITE_WS_HOST` | `127.0.0.1` | WebSocket 服务器绑定地址 |
 | `ASEPRITE_WS_PORT` | `9001` | WebSocket 服务器端口 |

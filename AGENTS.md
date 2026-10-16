@@ -37,16 +37,18 @@ src/v2/result.py     Envelope / OpResult / stable ErrorCode — returned by appl
 src/v2/inspect.py    metrics computed from the scale-1 exported PNG (palette, bbox, coverage, ...)
 src/v2/tools.py      register_v2_tools(): apply_operations, inspect, run_lua
 src/v2/ops/          built-in op definitions: draw_ops.py, session_ops.py (imported by __init__.py)
+scripts/mcp_common.lua  shared Lua helpers (sprite I/O, draw primitives, selection masks)
 scripts/ops_*.lua    op implementations grouped by category, named _mcp_op_<name>
 scripts/inspect.lua  read-only perception export (works on a temp copy; never modifies the document)
-scripts/*.lua        legacy one-script-per-tool files, kept for reference until phase-3 cleanup
+scripts/mcp_run_lua.lua / scripts/undo.lua / scripts/redo.lua  run_lua entry + ws-mode native history
 extension/main.lua   Aseprite extension; connects as WebSocket client, dofiles scripts, captures print()
 ```
 
-- **Tool surface**: `apply_operations` (only mutation entry; batches run in one `app.transaction`), `inspect` (read-only preview + metrics), `run_lua` (escape hatch; requires `unsafe=true` + `confirmed=true`). Destructive ops (`clear_canvas`, `close_session`) require `confirmed=true`.
+- **Tool surface**: `apply_operations` (only mutation entry; batches run in one `app.transaction`), `inspect` (read-only preview + metrics), `run_lua` (escape hatch; requires `unsafe=true` + `confirmed=true`). Destructive ops (`clear_canvas`, `close_session`) require `confirmed=true`, and so does `paint_grid` whose grid file lives outside the work directory (it `dofile`s Lua, same power as `run_lua`).
 - **Ops**: `create_sprite`, `open_sprite`, `save_sprite`, `close_session`, `draw_pixel`, `draw_rect`, `fill_region`, `clear_canvas`, `undo`, `redo` (defined in `src/v2/ops/`); structural ops `add_frames`, `set_durations`, `add_tag` and file-driven `paint_grid` live in `src/v2/ops/structure_ops.py` / `draw_ops.py`.
+- **`atomic=false` means partial success**: the ops that worked are saved and reported one by one, the failed op keeps its reason, and the envelope comes back `ok=true` with a `partial success: N of M ops...` warning. `atomic=true` (default) rolls the whole batch back and returns `ok=false` with `op_index`.
 - **CLI mode (default, `ASEPRITE_MCP_MODE=cli`)**: one `aseprite -b` process per call. No UI. State persists only via the session `.ase` file.
-- **Live mode (`ASEPRITE_MCP_MODE=ws`)**: operates `app.activeSprite` in the running Aseprite. Save is a no-op; callbacks can lag when the window is unfocused.
+- **Live mode (`ASEPRITE_MCP_MODE=ws`)**: operates `app.activeSprite` in the running Aseprite. Save is a no-op; callbacks can lag when the window is unfocused. Headless `aseprite -b` has **no undo history at all** (`app.command.Undo()` is a silent no-op), so `undo.lua`/`redo.lua` only ever do anything in a live Aseprite.
 
 ## Critical gotchas
 
@@ -55,8 +57,10 @@ extension/main.lua   Aseprite extension; connects as WebSocket client, dofiles s
 - **`json.decode` returns a userdata, not a table** — `pairs()`, `#` and field access do not work on it. Data files handed to Lua ops must be Lua table files loaded with `dofile` (see `paint_grid`).
 - Every script's first lines must conditionally load `mcp_common.lua` only if `not _G._mcp_common_loaded` (Live mode preloads it, CLI mode does not).
 - Use `_mcp_get_sprite(file)`, `_mcp_get_target_image(sprite, layer, frame)`, then `_mcp_maybe_save(sprite, file)`. `layer`/`frame` are **1-based**; missing cels are auto-created, but **layers and frames are not** — a fresh sprite has one layer and one frame, so `frame=2` needs `add_frames` first (`layer=2` still needs `run_lua`).
+- **Out-of-canvas coordinates must be rejected in Lua, not left to Aseprite.** `image:drawPixel()` outside the cel is a silent no-op, so `draw_pixel`/`draw_rect`/`fill_region` bounds-check against `image.width`/`image.height` before drawing (as `paint_grid` always did). Give any new coordinate-taking op the same check; otherwise the batch reports `ok` and the pixel is simply gone.
 - `apply_operations` validates every op and enforces the confirmation gate **before** creating a session; with no `session_id`, a first `create_sprite`/`open_sprite` auto-creates the session and injects `file`.
-- `AsepriteRunner` forces `encoding="utf-8"` with a 30s timeout (Windows GBK would otherwise corrupt JSON output).
+- `AsepriteRunner` forces `encoding="utf-8"` and a timeout of `Config.script_timeout` seconds (`ASEPRITE_TIMEOUT`, default 30 — Windows GBK would otherwise corrupt JSON output, and big-canvas work needs a bigger budget).
+- **`app.transaction` only works once a document is open**, so the atomic batch runs the opening op (or `_resolve()`) *first*, then probes the transaction, then runs the rest inside it. Moving the probe back to the top makes every batch warn about a transaction that can never engage.
 - v2 batch output is one JSON line after the `__MCP_JSON__` marker, parsed by `parse_result_stdout` (`src/v2/compile.py`); `inspect.lua` prints its metadata JSON on the last stdout line.
 - **`Sprite:saveCopyAs("x.png")` on a multi-frame document writes `x1.png … xN.png` and never `x.png`.** `inspect.lua` collapses its temp copy to a single frame (`deleteFrame`) before exporting, which is what keeps the agreed filenames intact; the tool's `frame` param picks the frame.
 - `run_lua` goes through `Engine.run_lua`: it writes the snippet to `<work>/sessions/<id>/_run_lua.lua` and runs it under the same per-session lock (`Engine.session_lock`) **and the same file snapshot** as `apply_operations` — a failing snippet rolls the `.ase` back, a successful one promotes it to `undo_backup.ase`.

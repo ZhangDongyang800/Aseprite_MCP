@@ -1,6 +1,7 @@
 """Aseprite MCP 服务器入口。
 
-创建 FastMCP 实例，注册所有工具、资源和提示，启动服务器。
+创建 FastMCP 实例，注册 v2 三工具面（apply_operations / inspect / run_lua）、
+资源和提示，启动服务器。
 
 支持两种执行模式（通过 ASEPRITE_MCP_MODE 环境变量切换）：
 - cli（默认）：通过 subprocess 调用 Aseprite CLI，无 UI、无状态持久
@@ -82,7 +83,7 @@ def create_server() -> FastMCP:
     # 创建 FastMCP 服务器
     mcp = FastMCP("AsepriteMCP")
 
-    # 注册工具（v2 三工具面；旧 register_*_tools 已退役，模块暂留待阶段 3 清理）
+    # 注册工具（v2 三工具面；v1 的 register_*_tools 已随 src/tools/ 一起删除）
     register_v2_tools(mcp, session_manager, runner, config)
 
     # 注册资源

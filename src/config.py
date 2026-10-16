@@ -14,14 +14,16 @@ _REPO_ROOT = Path(__file__).resolve().parents[1]
 def _warn_unusable_work_dir(path: Path) -> None:
     """Complain at startup instead of failing every later call obscurely.
 
-    Aseprite cannot load a script whose path contains non-ASCII characters and reports it as a
-    missing Lua engine, which reads as a build problem rather than a configuration one.
+    Aseprite 1.3.17 loads scripts and dofiles from non-ASCII paths fine (verified against a
+    real headless run), but older builds and some console code pages choke on them and report
+    it as a missing Lua engine - which reads as a build problem rather than a config one. So
+    this is advice, not a hard failure.
     """
     if not str(path).isascii():
         print(
-            f"WARNING: ASEPRITE_WORK_DIR is not ASCII-only: {path}\n"
-            f"Aseprite will reject script paths containing non-ASCII characters and report it "
-            f"as a missing Lua engine. Point ASEPRITE_WORK_DIR at an ASCII path.",
+            f"NOTE: ASEPRITE_WORK_DIR is not ASCII-only: {path}\n"
+            f"Current Aseprite builds handle this, but if scripts start failing to load with "
+            f"'missing Lua engine', point ASEPRITE_WORK_DIR at an ASCII path.",
             file=sys.stderr,
         )
 
@@ -34,6 +36,7 @@ class Config:
     - ASEPRITE_PATH: Aseprite 可执行文件路径
     - ASEPRITE_WORK_DIR: 会话工作目录根（默认 <repo>/work）
     - ASEPRITE_SESSION_TIMEOUT: 会话超时时间（秒）
+    - ASEPRITE_TIMEOUT: 单次 Aseprite 调用超时（秒，默认 30；大画布填充/模糊可放宽）
     - ASEPRITE_MCP_MODE: 执行模式（"cli" 或 "ws"），默认 "cli"
     - ASEPRITE_WS_HOST: WebSocket server 监听地址，默认 "127.0.0.1"
     - ASEPRITE_WS_PORT: WebSocket server 监听端口，默认 9001
@@ -57,6 +60,9 @@ class Config:
     # WebSocket server 配置（仅 mode="ws" 时生效）
     ws_host: str = None
     ws_port: int = None
+
+    # 单次 Aseprite 调用的时间预算（秒）：大画布填充/模糊会比日常绘制慢一个量级
+    script_timeout: int = None
 
     def __post_init__(self):
         """从环境变量加载配置，应用默认值。"""
@@ -84,6 +90,10 @@ class Config:
             self.session_timeout = int(
                 os.environ.get("ASEPRITE_SESSION_TIMEOUT", "3600")
             )
+
+        # 单次脚本调用的超时（秒）：默认 30s，慢的大画布工作负载可用 ASEPRITE_TIMEOUT 放宽
+        if self.script_timeout is None:
+            self.script_timeout = int(os.environ.get("ASEPRITE_TIMEOUT", "30"))
 
         # Lua 脚本目录：自动定位为 src 包的父目录下的 scripts/
         # 即 <项目根>/scripts/

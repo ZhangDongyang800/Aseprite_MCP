@@ -1,6 +1,7 @@
 """执行器：锁、备份、编译、单进程执行（spec §6）。"""
 
 import contextlib
+import re
 import shutil
 import threading
 import time
@@ -8,13 +9,20 @@ import time
 from src.v2.compile import compile_ops, parse_result_stdout
 from src.v2.registry import REGISTRY
 from src.v2.result import (
-    Artifact, Envelope, ErrorCode, OpResult, UndoInfo, script_diagnostics,
+    Artifact, Envelope, ErrorCode, OpResult, UndoInfo, classify_script_failure,
+    clean_lua_error,
 )
 
 BACKUP_NAME = "undo_backup.ase"
 REDO_NAME = "redo_backup.ase"
 SNAPSHOT_NAME = "_batch_before.ase"
 TRANSACTION_WARNING = "app.transaction unavailable; CLI atomicity enforced by file snapshot"
+WS_NO_ROLLBACK_WARNING = (
+    "app.transaction unavailable in this Aseprite session: a failed batch keeps its changes "
+    "with no undo guarantee"
+)
+OP_FAILED_SENTINEL = "MCP_OP_FAILED:"
+_clean_lua_error = clean_lua_error
 
 
 def _novelty(data, supplied: dict):
@@ -83,15 +91,17 @@ class Engine:
         reopening the session, and `changed` was asserted rather than observed.
         """
         start = time.time()
-        try:
-            work = self.session_manager.get_work_dir(session_id)
-            path = self.session_manager.get_ase_path(session_id)
-        except KeyError:
-            return self._missing(session_id)
-
-        snapshot = self.config.mode == "cli"
-        before = work / SNAPSHOT_NAME
+        # Paths are resolved inside the lock: a concurrent close_session may be rmtree-ing the
+        # work dir between here and the write, which used to surface as a bare FileNotFoundError.
         with self.session_lock(session_id):
+            try:
+                work = self.session_manager.get_work_dir(session_id)
+                path = self.session_manager.get_ase_path(session_id)
+            except KeyError:
+                return self._missing(session_id)
+
+            snapshot = self.config.mode == "cli"
+            before = work / SNAPSHOT_NAME
             if snapshot:
                 (work / REDO_NAME).unlink(missing_ok=True)
                 before.unlink(missing_ok=True)
@@ -104,13 +114,16 @@ class Engine:
                 "file": str(path), "code_path": str(snippet),
             })
 
-        if not result["success"]:
-            self._restore_snapshot(before, path)
-            message, hint = script_diagnostics(result)
-            return Envelope.failure(
-                ErrorCode.LUA_RUNTIME_ERROR, message, hint=hint,
-                session_id=session_id, mode=self.config.mode,
-            )
+            if not result["success"]:
+                self._restore_snapshot(before, path)
+                code_, message, hint = classify_script_failure(result)
+                if code_ is ErrorCode.SCRIPT_ERROR:
+                    # any other failure here is the snippet itself blowing up
+                    code_ = ErrorCode.LUA_RUNTIME_ERROR
+                return Envelope.failure(
+                    code_, _clean_lua_error(message), hint=hint,
+                    session_id=session_id, mode=self.config.mode,
+                )
 
         # The .ase writer is not byte-deterministic, so "changed" means "the document was
         # rewritten" here — exactly what the op batch reports.
@@ -199,10 +212,22 @@ class Engine:
         if not result["success"]:
             return Envelope.failure(
                 ErrorCode.LUA_RUNTIME_ERROR,
-                result.get("error", f"{action} failed"),
+                _clean_lua_error(result.get("error", f"{action} failed")),
                 session_id=session_id, mode=self.config.mode,
             )
         stdout = (result.get("stdout") or "").strip()
+        if stdout.startswith("NOTHING"):
+            # undo.lua/redo.lua fingerprint the document: an unchanged fingerprint means
+            # Aseprite had nothing to step to, and saying ok would be a lie.
+            code = ErrorCode.NO_MORE_UNDO if action == "undo" else ErrorCode.NO_MORE_REDO
+            detail = stdout.partition(":")[2].strip()
+            if detail.lower().startswith(action):
+                detail = detail[len(action):].strip(" ()")
+            return Envelope.failure(
+                code, f"nothing to {action} in this Aseprite document",
+                hint=detail or f"Aseprite refused the {action} step (empty history)",
+                session_id=session_id, mode=self.config.mode,
+            )
         if not stdout.startswith("OK"):
             return Envelope.failure(
                 ErrorCode.LUA_RUNTIME_ERROR,
@@ -244,9 +269,9 @@ class Engine:
         result = self.runner.run_script_path(str(batch), {})
         if not result["success"]:
             self._restore_snapshot(before, path)
-            message, hint = script_diagnostics(result)
+            code_, message, hint = classify_script_failure(result)
             return Envelope.failure(
-                ErrorCode.SCRIPT_ERROR, message, hint=hint,
+                code_, _clean_lua_error(message), hint=hint,
                 session_id=session_id, mode=self.config.mode,
             )
         try:
@@ -261,26 +286,43 @@ class Engine:
         reported = payload.get("ops", [])
         supplied = [p.model_dump(mode="json") for _, p in lua_parsed]
         failed = next((i for i, r in enumerate(reported) if not r.get("ok")), None)
+        # A partial run must say which ops landed: pruning the "nothing new" entries would
+        # hide exactly what the caller needs to decide whether to retry.
+        partial = failed is not None and not atomic and bool(payload.get("saved"))
         op_results = []
         for i, r in enumerate(reported):
             ok = bool(r.get("ok"))
             data = r.get("data")
-            if ok:
+            if ok and not partial:
                 data = _novelty(data, supplied[i]) if i < len(supplied) else data
                 if data is None:
                     continue
             op_results.append(OpResult(op=r.get("op", "?"), ok=ok, data=data))
         if failed is not None or payload.get("error"):
+            cause = self._op_failure_message(payload, reported, failed)
+            if partial:
+                applied = sum(1 for r in reported if r.get("ok"))
+                env = Envelope(
+                    ok=True, session_id=session_id, mode=self.config.mode,
+                    op_results=op_results,
+                    changed=bool(mutating and payload.get("saved")),
+                    warnings=[
+                        f"partial success: {applied} of {len(reported)} ops were applied and "
+                        f"saved; op {failed + 1} failed and was skipped: {cause}"
+                    ],
+                    timing_ms=int((time.time() - start) * 1000),
+                )
+                return env
             self._restore_snapshot(before, path)
             env = Envelope.failure(
                 ErrorCode.OP_FAILED,
-                str(payload.get("error") or "op failed"),
+                cause,
                 op_index=failed,
                 session_id=session_id, mode=self.config.mode,
                 op_results=op_results,
             )
-            if snapshot and payload.get("transaction") is False:
-                env.warnings.append(TRANSACTION_WARNING)
+            if atomic and payload.get("transaction") is False:
+                env.warnings.append(self._transaction_warning())
             return env
 
         if snapshot:
@@ -290,17 +332,45 @@ class Engine:
             before.unlink(missing_ok=True)
 
         artifacts = self._collect_artifacts(payload)
+        # CLI can only undo what it snapshotted: a first batch that created the canvas has
+        # no backup behind it, and claiming otherwise makes the caller trust a lie.
+        if snapshot:
+            undo_available = bool(mutating and (work / BACKUP_NAME).exists())
+        else:
+            undo_available = bool(mutating)
         env = Envelope(
             ok=True, session_id=session_id, mode=self.config.mode,
             op_results=op_results,
             artifacts=artifacts,
             changed=bool(mutating and payload.get("saved")),
-            undo=UndoInfo(mode=self._undo_mode(), available=mutating),
+            undo=UndoInfo(mode=self._undo_mode(), available=undo_available),
             timing_ms=int((time.time() - start) * 1000),
         )
-        if payload.get("transaction") is False:
-            env.warnings.append(TRANSACTION_WARNING)
+        if atomic and payload.get("transaction") is False:
+            env.warnings.append(self._transaction_warning())
         return env
+
+    def _transaction_warning(self) -> str:
+        """CLI has the file snapshot; live mode has nothing but the transaction."""
+        if self.config.mode == "cli":
+            return TRANSACTION_WARNING
+        return WS_NO_ROLLBACK_WARNING
+
+    def _op_failure_message(self, payload: dict, reported: list, failed) -> str:
+        """Name the op that failed, not the internal abort token.
+
+        The batch script aborts with 'MCP_OP_FAILED:<index>' so Python can locate the op; that
+        sentinel is bookkeeping, and the Lua message recorded for the same op is what the
+        caller needs.
+        """
+        error = str(payload.get("error") or "")
+        if failed is not None and 0 <= failed < len(reported):
+            recorded = reported[failed].get("data")
+            if isinstance(recorded, str) and recorded.strip():
+                return _clean_lua_error(recorded)
+        if error.startswith(OP_FAILED_SENTINEL):
+            return f"op {error[len(OP_FAILED_SENTINEL):]} failed in Aseprite"
+        return _clean_lua_error(error) if error else "op failed"
 
     def _restore_snapshot(self, before, path) -> None:
         if before.exists():

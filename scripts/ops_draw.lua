@@ -17,6 +17,13 @@ local function rgba(hex)
     return app.pixelColor.rgba(r, g, b, 255)
 end
 
+-- image:drawPixel() outside the cel is a silent no-op: the op reports ok and the pixel is
+-- simply gone, so a typo'd coordinate costs a whole batch its feedback loop. Every op that
+-- names coordinates checks them up front, the way _mcp_op_paint_grid already does.
+local function inside(image, x, y)
+    return x >= 0 and y >= 0 and x < image.width and y < image.height
+end
+
 function _G._mcp_op_clear_canvas(sprite, params)
     local image = target_image(sprite, params)
     image:clear()
@@ -25,12 +32,22 @@ end
 
 function _G._mcp_op_draw_pixel(sprite, params)
     local image = target_image(sprite, params)
+    if not inside(image, params.x, params.y) then
+        error(("pixel %d,%d is outside the %dx%d canvas")
+              :format(params.x, params.y, image.width, image.height))
+    end
     image:drawPixel(params.x, params.y, rgba(params.color))
     return {x = params.x, y = params.y}
 end
 
 function _G._mcp_op_draw_rect(sprite, params)
     local image = target_image(sprite, params)
+    if not inside(image, params.x, params.y)
+       or not inside(image, params.x + params.width - 1, params.y + params.height - 1) then
+        error(("rect %d,%d %dx%d does not fit the %dx%d canvas")
+              :format(params.x, params.y, params.width, params.height,
+                      image.width, image.height))
+    end
     _mcp_rect(image, params.x, params.y, params.width, params.height,
               rgba(params.color), params.filled == true)
     return {x = params.x, y = params.y, width = params.width, height = params.height}
@@ -38,6 +55,10 @@ end
 
 function _G._mcp_op_fill_region(sprite, params)
     local image = target_image(sprite, params)
+    if not inside(image, params.x, params.y) then
+        error(("fill seed %d,%d is outside the %dx%d canvas")
+              :format(params.x, params.y, image.width, image.height))
+    end
     _mcp_fill(image, params.x, params.y, rgba(params.color), image.width, image.height)
     return {x = params.x, y = params.y}
 end

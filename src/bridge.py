@@ -16,6 +16,7 @@ Aseprite 执行后回传结果。
 """
 
 import asyncio
+import sys
 import threading
 import uuid
 from typing import Optional
@@ -26,6 +27,15 @@ try:
     _WEBSOCKETS_AVAILABLE = True
 except ImportError:
     _WEBSOCKETS_AVAILABLE = False
+
+
+def _log(message: str) -> None:
+    """Bridge diagnostics belong on stderr.
+
+    The MCP stdio transport speaks JSON-RPC on stdout; a stray banner or error line there
+    is not noise, it is a protocol violation that strict clients reject outright.
+    """
+    print(f"[WebSocketBridge] {message}", file=sys.stderr, flush=True)
 
 
 def params_to_lua(d: dict) -> str:
@@ -173,7 +183,7 @@ class WebSocketBridge:
             self._loop.run_until_complete(self._serve())
             self._loop.run_forever()
         except Exception as e:
-            print(f"[WebSocketBridge] Server error: {e}", flush=True)
+            _log(f"Server error: {e}")
         finally:
             self._loop.close()
 
@@ -181,11 +191,8 @@ class WebSocketBridge:
         """启动 WebSocket server 并持续运行。"""
         self._server = await serve(self._handle_client, self.host, self.port)
         self._started.set()
-        print(
-            f"[WebSocketBridge] Server listening on ws://{self.host}:{self.port}\n"
-            f"[WebSocketBridge] Waiting for Aseprite extension to connect...",
-            flush=True,
-        )
+        _log(f"Server listening on ws://{self.host}:{self.port}")
+        _log("Waiting for Aseprite extension to connect...")
 
     async def _handle_client(self, ws):
         """处理 Aseprite client 连接。
@@ -193,40 +200,64 @@ class WebSocketBridge:
         每个 Aseprite 实例连接后，持续接收响应消息并分发到对应的等待请求。
         """
         peer = ws.remote_address if hasattr(ws, "remote_address") else "unknown"
-        print(f"[WebSocketBridge] Aseprite client connected: {peer}", flush=True)
+        _log(f"Aseprite client connected: {peer}")
 
+        stale = None
         with self._client_lock:
-            # 如果已有连接，保留新的（最新优先）
-            self._client = ws
+            # 最新优先：旧连接必须被踢掉，否则它仍能抢答 pending 请求
+            stale, self._client = self._client, ws
+        if stale is not None and stale is not ws:
+            _log(f"closing stale client connection {peer}")
+            try:
+                await stale.close()
+            except Exception as e:  # noqa: BLE001 - closing a dead socket must not break takeover
+                _log(f"failed to close stale connection: {e}")
 
         try:
             async for message in ws:
                 await self._handle_response(message)
         except Exception as e:
-            print(f"[WebSocketBridge] Client connection error: {e}", flush=True)
+            _log(f"Client connection error: {e}")
         finally:
             with self._client_lock:
                 if self._client is ws:
                     self._client = None
-            print(f"[WebSocketBridge] Aseprite client disconnected: {peer}", flush=True)
+            _log(f"Aseprite client disconnected: {peer}")
 
     async def _handle_response(self, message: str):
         """解析 Aseprite 的响应，唤醒等待的请求。
 
         响应格式: <id>\t<success>\t<stdout_escaped>\t<stderr_escaped>
+
+        字段不足的畸形响应（扩展早期版本在若干错误分支只写 3 个字段）同样要唤醒等待方，
+        否则调用方只能挂到超时才知道出事了。
         """
         parts = message.split("\t", 3)
+        req_id = parts[0] if parts else ""
         if len(parts) < 4:
-            print(f"[WebSocketBridge] Malformed response: {message!r}", flush=True)
+            _log(f"Malformed response ({len(parts)}/4 fields): {message!r}")
+            pending = self._take_pending(req_id)
+            if pending:
+                event, result_box = pending
+                result_box["result"] = {
+                    "success": False,
+                    "stdout": "",
+                    "stderr": message,
+                    "error": (
+                        "Malformed response from the Aseprite extension "
+                        "(expected <id>\\t<success>\\t<stdout>\\t<stderr>). "
+                        "Update the extension in the Aseprite_MCP/extension folder."
+                    ),
+                }
+                event.set()
             return
 
-        req_id, success_str, stdout_escaped, stderr_escaped = parts
+        success_str, stdout_escaped, stderr_escaped = parts[1], parts[2], parts[3]
         success = success_str.lower() == "true"
         stdout = unescape_text(stdout_escaped)
         stderr = unescape_text(stderr_escaped)
 
-        with self._pending_lock:
-            pending = self._pending.pop(req_id, None)
+        pending = self._take_pending(req_id)
 
         if pending:
             event, result_box = pending
@@ -239,7 +270,14 @@ class WebSocketBridge:
                 result_box["result"]["error"] = "Script execution failed"
             event.set()
         else:
-            print(f"[WebSocketBridge] No pending request for id={req_id}", flush=True)
+            _log(f"No pending request for id={req_id}")
+
+    def _take_pending(self, req_id: str):
+        """Pop the wait handle for req_id (None when nobody is waiting)."""
+        if not req_id:
+            return None
+        with self._pending_lock:
+            return self._pending.pop(req_id, None)
 
     def is_connected(self) -> bool:
         """检查是否有 Aseprite client 连接。"""
@@ -327,8 +365,15 @@ class WebSocketBridge:
     def stop(self):
         """停止 WebSocket server。"""
         if self._loop and self._server:
+
+            async def _shutdown():
+                await self._server.close()
+                # give in-flight connection handlers a beat to unwind; tearing the loop down
+                # under them leaves "no running event loop" warnings in the host process
+                await asyncio.sleep(0.05)
+
             try:
-                asyncio.run_coroutine_threadsafe(self._server.close(), self._loop).result(timeout=2.0)
+                asyncio.run_coroutine_threadsafe(_shutdown(), self._loop).result(timeout=2.0)
             except Exception:
                 pass
         if self._loop:

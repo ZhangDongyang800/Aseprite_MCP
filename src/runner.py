@@ -54,62 +54,7 @@ class AsepriteRunner:
             - 成功: {"success": True, "stdout": "...", "stderr": "..."}
             - 失败: {"success": False, "stdout": "...", "stderr": "...", "error": "..."}
         """
-        # 构造脚本完整路径
-        script_path = self.config.scripts_dir / script_name
-
-        # 构造命令行参数（--script-param 必须在 --script 之前）
-        cmd = [
-            self.config.aseprite_path,
-            "-b",
-        ]
-
-        # 添加 --script-param 参数（必须在 --script 之前）
-        for key, value in params.items():
-            cmd.extend(["--script-param", f"{key}={value}"])
-
-        # 添加 --script 参数（放在最后）
-        cmd.extend(["--script", str(script_path)])
-
-        try:
-            # 执行命令（指定 UTF-8 编码，避免 Windows GBK 乱码导致 JSON 解析失败）
-            result = subprocess.run(
-                cmd,
-                capture_output=True,
-                text=True,
-                encoding="utf-8",
-                errors="replace",
-                env=_aseprite_env(self.config.appdata_dir),
-                timeout=30,  # 30 秒超时
-            )
-
-            if result.returncode == 0:
-                return {
-                    "success": True,
-                    "stdout": result.stdout,
-                    "stderr": result.stderr,
-                }
-            else:
-                return {
-                    "success": False,
-                    "stdout": result.stdout,
-                    "stderr": result.stderr,
-                    "error": f"Aseprite exited with code {result.returncode}",
-                }
-
-        except subprocess.TimeoutExpired:
-            return {
-                "success": False,
-                "stdout": "",
-                "stderr": "",
-                "error": f"Aseprite script timeout: exceeded 30 seconds",
-            }
-        except FileNotFoundError as e:
-            return {
-                "success": False,
-                "stdout": "",
-                "stderr": "",
-                "error": f"Aseprite executable not found: {e}",
-            }
+        return self._invoke(self._build_cmd(self.config.scripts_dir / script_name, params))
 
     def check_aseprite_exists(self) -> bool:
         """检查 Aseprite 可执行文件是否存在。
@@ -132,29 +77,58 @@ class AsepriteRunner:
         Returns:
             Result dict (same format as run_script)
         """
+        return self._invoke(self._build_cmd(script_path, params))
+
+    def _build_cmd(self, script_path, params: dict) -> list:
+        """aseprite -b --script-param k=v ... --script <path>
+
+        --script-param must precede --script: Aseprite ignores parameters that come after it,
+        and app.params silently ends up empty.
+        """
         cmd = [self.config.aseprite_path, "-b"]
         for key, value in params.items():
             cmd.extend(["--script-param", f"{key}={value}"])
-        cmd.extend(["--script", script_path])
+        cmd.extend(["--script", str(script_path)])
+        return cmd
 
+    def _invoke(self, cmd: list) -> dict:
+        """Run one batched Aseprite invocation; every failure mode maps to a result dict."""
+        timeout = getattr(self.config, "script_timeout", 30) or 30
         try:
+            # 指定 UTF-8 编码，避免 Windows GBK 乱码导致 JSON 解析失败
             result = subprocess.run(
-                cmd, capture_output=True, text=True, encoding="utf-8",
-                errors="replace", env=_aseprite_env(self.config.appdata_dir),
-                timeout=30,
+                cmd,
+                capture_output=True,
+                text=True,
+                encoding="utf-8",
+                errors="replace",
+                env=_aseprite_env(self.config.appdata_dir),
+                timeout=timeout,
             )
-            if result.returncode == 0:
-                return {"success": True, "stdout": result.stdout, "stderr": result.stderr}
-            else:
-                return {
-                    "success": False, "stdout": result.stdout,
-                    "stderr": result.stderr,
-                    "error": f"Aseprite exited with code {result.returncode}",
-                }
         except subprocess.TimeoutExpired:
-            return {"success": False, "stdout": "", "stderr": "", "error": "Timeout exceeded 30s"}
+            return {
+                "success": False,
+                "stdout": "",
+                "stderr": "",
+                "error": f"Aseprite script timeout: exceeded {timeout} seconds",
+            }
         except FileNotFoundError as e:
-            return {"success": False, "stdout": "", "stderr": "", "error": f"Executable not found: {e}"}
+            # Wording is a contract: classify_script_failure() maps it to aseprite_not_found.
+            return {
+                "success": False,
+                "stdout": "",
+                "stderr": "",
+                "error": f"Aseprite executable not found: {e}",
+            }
+
+        if result.returncode == 0:
+            return {"success": True, "stdout": result.stdout, "stderr": result.stderr}
+        return {
+            "success": False,
+            "stdout": result.stdout,
+            "stderr": result.stderr,
+            "error": f"Aseprite exited with code {result.returncode}",
+        }
 
 
 @dataclass

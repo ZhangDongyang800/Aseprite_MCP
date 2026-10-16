@@ -42,21 +42,20 @@ end
 -- 返回 true 表示成功，false + err 表示失败
 local function set_script_params(params)
     params = params or {}
-    -- 尝试逐字段写入 app.params
+    -- 每次请求都从空表开始：app.params 是进程级状态，残留会让下一个请求读到上一次的参数
     local ok, err = pcall(function()
-        for k, v in pairs(params) do
-            app.params[k] = tostring(v)
-        end
-    end)
-    if ok then return true end
-    -- 如果 app.params 不可写，尝试整体替换
-    ok, err = pcall(function()
-        -- 构造一个纯字符串值的 table（模拟 CLI 的 app.params 行为）
         local str_params = {}
         for k, v in pairs(params) do
             str_params[k] = tostring(v)
         end
         app.params = str_params
+    end)
+    if ok then return true end
+    -- app.params 整体替换失败时退回逐字段写入
+    ok, err = pcall(function()
+        for k, v in pairs(params) do
+            app.params[k] = tostring(v)
+        end
     end)
     if ok then return true end
     return false, err
@@ -145,7 +144,9 @@ local function handle_request(message)
     local script_name = parts[2]
 
     if not req_id or not script_name then
-        return req_id and (req_id .. "\tfalse\t\terror: invalid request format") or "error\tfalse\t\tno request id"
+        -- 协议要求固定 4 个字段；少写一个字段会让 Python 端无法解析并挂到超时
+        return req_id and (req_id .. "\tfalse\t\terror: invalid request format\t")
+            or "error\tfalse\t\tno request id\t"
     end
 
     -- 解析参数对 key=value
@@ -168,14 +169,14 @@ local function handle_request(message)
     -- Aseprite 路径分隔符兼容：Windows 路径用反斜杠，但 Lua 字符串里不受影响
     local file = io.open(script_path, "r")
     if not file then
-        return req_id .. "\tfalse\t\terror: script not found: " .. script_path
+        return req_id .. "\tfalse\t\terror: script not found: " .. script_path .. "\t"
     end
     file:close()
 
     -- 设置 app.params
     local params_ok, params_err = set_script_params(params)
     if not params_ok then
-        return req_id .. "\tfalse\t\terror: cannot set app.params: " .. tostring(params_err)
+        return req_id .. "\tfalse\t\terror: cannot set app.params: " .. tostring(params_err) .. "\t"
     end
 
     -- Live 模式标志：标记当前在 WebSocket 扩展环境中

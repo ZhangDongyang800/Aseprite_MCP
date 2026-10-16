@@ -9,14 +9,14 @@ def test_run_lua_requires_unsafe(tools):
     sid = sm.create_session(8, 8)
     env = captured["run_lua"](session_id=sid, code="print(1)")
     assert env.ok is False
-    assert env.error.code.value == "unsupported_in_mode"
+    assert env.error.code == ErrorCode.UNSAFE_REQUIRED
 
 
 def test_run_lua_unsafe_guard_precedes_session_check(tools):
     captured, _, _ = tools
     env = captured["run_lua"](session_id="missing", code="print(1)")
     assert env.ok is False
-    assert env.error.code == ErrorCode.UNSUPPORTED_IN_MODE
+    assert env.error.code == ErrorCode.UNSAFE_REQUIRED
 
 
 def test_run_lua_requires_confirmed(tools):
@@ -102,11 +102,13 @@ def test_run_lua_runner_failure(tools):
     )
     assert env.ok is False
     assert env.error.code == ErrorCode.LUA_RUNTIME_ERROR
-    assert env.error.hint == "trace"
+    # the traceback is what the caller can act on, so it is the message
+    assert env.error.message == "trace"
+    assert env.error.hint == "boom"
 
 
 def test_run_lua_reports_the_lua_error_text(tools):
-    """Headless Aseprite writes Lua errors to stdout, so they must reach the hint."""
+    """Headless Aseprite writes Lua errors to stdout; the message must name the failure."""
     captured, sm, runner = tools
     sid = sm.create_session(8, 8)
     sm.get_ase_path(sid).write_bytes(b"ASE")
@@ -118,7 +120,7 @@ def test_run_lua_reports_the_lua_error_text(tools):
         session_id=sid, code="app.bad()", unsafe=True, confirmed=True
     )
     assert env.ok is False
-    assert "attempt to call a nil value" in env.error.hint
+    assert "attempt to call a nil value" in env.error.message
 
 
 def test_failed_run_lua_restores_the_document(tools):

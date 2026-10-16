@@ -123,49 +123,82 @@ def compile_ops(
         marker=RESULT_MARKER,
     )
 
-    calls = []
-    for i, (spec, params) in enumerate(parsed, start=1):
-        if spec.lua is None:
-            continue  # 元 op（如 close_session）由 Python 侧处理，不生成 Lua
+    title = lua_string(f"MCP: {len(parsed)} ops")
+    first_bootstrap = bool(parsed) and parsed[0][0].name in _BOOTSTRAP_OPS
+
+    def op_block(spec: OpSpec, params: BaseModel, index: int, *, in_body: bool) -> str:
+        """One op call plus its bookkeeping.
+
+        `index` is the op's position in the caller's batch: atomic batches abort with it so
+        Python can point at the op that failed. The innermost Lua error wins over anything
+        that wraps it, because that is the message naming the actual problem.
+        """
         target = "_resolve()"
         after = ""
-        if i == 1 and spec.name in _BOOTSTRAP_OPS:
+        if index == 1 and spec.name in _BOOTSTRAP_OPS:
             target = "nil"
             after = "\n  _sprite = _G._mcp_created_sprite"
-        calls.append(
-            f"""do
-  local _ok, _data = pcall({spec.lua}, {target}, {_op_literal(spec, params)})
-  _record({lua_string(spec.name)}, _ok, _data){after}
-  if not _ok then _saved_ok = false; _run_error = tostring(_data)"""
+        indent = "  " if in_body else ""
+        block = (
+            f"{indent}do\n"
+            f"{indent}  local _ok, _data = pcall({spec.lua}, {target}, {_op_literal(spec, params)})\n"
+            f"{indent}  _record({lua_string(spec.name)}, _ok, _data){after}\n"
+            f"{indent}  if not _ok then _run_error = _run_error or tostring(_data)"
         )
         if atomic:
-            calls.append(f'    error("MCP_OP_FAILED:{i}", 0)')
-        calls.append("  end\nend\n")
+            block += ' _saved_ok = false; error("MCP_OP_FAILED:%d", 0)' % index
+        return f"{block}\n{indent}end\n{indent}end\n\n"
 
-    body = "".join(calls)
+    indexed = [
+        (i, spec, params)
+        for i, (spec, params) in enumerate(parsed, start=1)
+        if spec.lua is not None
+    ]
 
-    if atomic:
-        runner = f"""local _saved_ok = true
-local _run_error = nil
-local _tx_used = false
-local _body = function()
-{body}end
-if pcall(app.transaction, "MCP: {len(parsed)} ops", function() end) then
-  _tx_used = true
-  local _ok, _err = pcall(app.transaction, "MCP: {len(parsed)} ops", _body)
-  if not _ok then _saved_ok = false; _run_error = tostring(_err) end
-else
-  local _ok, _err = pcall(_body)
-  if not _ok then _saved_ok = false; _run_error = tostring(_err) end
-end
-"""
-    else:
+    if not atomic:
+        # No transaction and no abort: every op runs, the document is saved at the end, and
+        # the ops that worked survive a failure somewhere in the middle.
+        body = "".join(op_block(spec, params, i, in_body=False) for i, spec, params in indexed)
         runner = f"""local _saved_ok = true
 local _run_error = nil
 local _tx_used = false
 local _body = function()
 {body}end
 _body()
+"""
+    else:
+        head = indexed[0] if first_bootstrap else None
+        rest = indexed[1:] if first_bootstrap else indexed
+        body = "".join(op_block(spec, params, i, in_body=True) for i, spec, params in rest)
+        if head is not None:
+            # create_sprite/open_sprite run first and outside the transaction: app.transaction
+            # raises when no document is open, so the probe can only happen once one exists.
+            prepare = (
+                "local _ready_ok, _ready_err = pcall(function()\n"
+                + op_block(head[1], head[2], head[0], in_body=False)
+                + "end)\n"
+            )
+        else:
+            prepare = "local _ready_ok, _ready_err = pcall(_resolve)\n"
+        runner = f"""local _saved_ok = true
+local _run_error = nil
+local _tx_used = false
+local _title = {title}
+local _body = function()
+{body}end
+{prepare}_tx_used = (_ready_ok and pcall(app.transaction, _title, function() end)) or false
+if _ready_ok then
+  if _tx_used then
+    local _ok, _err = pcall(app.transaction, _title, _body)
+    if not _ok then _saved_ok = false; _run_error = _run_error or tostring(_err) end
+  else
+    local _ok, _err = pcall(_body)
+    if not _ok then _saved_ok = false; _run_error = _run_error or tostring(_err) end
+  end
+else
+  _saved_ok = false
+  _run_error = _run_error or tostring(_ready_err)
+end
 """
 
     return header + runner + _FOOTER.format(marker=RESULT_MARKER)

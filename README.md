@@ -39,6 +39,17 @@ have ops of their own — `add_frames`, `set_durations`, `add_tag`.
 > Each character ships a re-runnable parametric generator and a per-frame pixel check under
 > `demo/<name>/generator/`.
 
+### Terrain tileset
+
+| Tileset sheet | Composed scene | Water loop |
+|:--:|:--:|:--:|
+| **Chibi Grassland**<br>32 tiles · 32px · 8x4 | ![](demo/grassland_q/grassland_q_scene.png) | ![](demo/grassland_q/grassland_q_water.gif) |
+
+> 32 tiles of 32x32 in an 8x4 sheet (256x128), including dedicated transition and corner tiles
+> for path, water and wheat; the water animates over 4 frames. The whole sheet is one atomic
+> batch = a single Aseprite process (~0.45s), drawn through `paint_grid`, and the exports are
+> checked pixel-exactly (0 pixels differ) against the design matrices.
+
 ---
 
 > [!IMPORTANT]

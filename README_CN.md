@@ -35,6 +35,16 @@
 > 第三个是**动作帧动画**：待机 → 蓄力 → 张口突进 → 咬合 → 吞咽，帧时长按相位变化。
 > 每个角色的 `demo/<name>/generator/` 下都有可重跑的参数化生成器与逐帧像素校验脚本。
 
+### 地形 tileset
+
+| tileset 图集 | 拼装场景 | 水面循环 |
+|:--:|:--:|:--:|
+| **Q 版草原**<br>32 张 32px · 8x4 | ![](demo/grassland_q/grassland_q_scene.png) | ![](demo/grassland_q/grassland_q_water.gif) |
+
+> 32 张 32x32 瓦片排成 8x4 图集（256x128），含路径 / 水域 / 麦田各自的过渡砖与转角砖；
+> 水面 4 帧循环。整张图集是一个原子批量 = 一次 Aseprite 进程（约 0.45s），
+> 网格文件经 `paint_grid` 写入，导出后与设计矩阵**逐像素校验**（0 像素差）。
+
 ---
 
 > [!IMPORTANT]

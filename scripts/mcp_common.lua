@@ -203,23 +203,46 @@ _G._mcp_ellipse = function(image, cx, cy, rx, ry, color, filled)
     end
 end
 
+-- 洪泛填充（扫描线算法）
+-- 逐像素 4 邻域 DFS 每像素要 new 一个 table 并 push 最多 4 次：4096² 画布就是六千多万次
+-- 分配，必然撞上子进程超时。扫描线一次吃掉一整行连续像素，每个像素只被 get/put 各一次。
 _G._mcp_fill = function(image, x, y, target_color, w, h)
+    if x < 0 or y < 0 or x >= w or y >= h then return 0 end
     local src = image:getPixel(x, y)
-    if src == target_color then return end
-    local stack = {{x, y}}
-    while #stack > 0 do
-        local p = table.remove(stack)
-        local px, py = p[1], p[2]
-        if px >= 0 and px < w and py >= 0 and py < h then
-            if image:getPixel(px, py) == src then
-                image:drawPixel(px, py, target_color)
-                table.insert(stack, {px+1, py})
-                table.insert(stack, {px-1, py})
-                table.insert(stack, {px, py+1})
-                table.insert(stack, {px, py-1})
+    if src == target_color then return 0 end
+    local filled = 0
+    local seeds = {{x, y}}
+    while #seeds > 0 do
+        local seed = table.remove(seeds)
+        local sx, sy = seed[1], seed[2]
+        if sy >= 0 and sy < h and sx >= 0 and sx < w and image:getPixel(sx, sy) == src then
+            -- 向左右扩张出整段 span
+            local left, right = sx, sx
+            while left - 1 >= 0 and image:getPixel(left - 1, sy) == src do left = left - 1 end
+            while right + 1 < w and image:getPixel(right + 1, sy) == src do right = right + 1 end
+            for px = left, right do
+                image:drawPixel(px, sy, target_color)
+            end
+            filled = filled + (right - left + 1)
+            -- 上下两行里的 src 像素作为新种子（每行每段只入队一次）
+            for _, ny in ipairs({sy - 1, sy + 1}) do
+                if ny >= 0 and ny < h then
+                    local pending = false
+                    for px = left, right do
+                        if image:getPixel(px, ny) == src then
+                            if not pending then
+                                seeds[#seeds + 1] = {px, ny}
+                                pending = true
+                            end
+                        else
+                            pending = false
+                        end
+                    end
+                end
             end
         end
     end
+    return filled
 end
 
 _G._mcp_clear_rect = function(image, x, y, w, h)

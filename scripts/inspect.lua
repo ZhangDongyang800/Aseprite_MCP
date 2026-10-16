@@ -69,8 +69,20 @@ if view == "silhouette" then
     end
 end
 
+-- 预览放大后的像素量必须有上限：4096² 画布 × scale=4 就是 1.6 亿像素，
+-- 一次 inspect 会先把内存和带宽吃光，再把一张没人看得清的大图塞进对话。
+local MAX_PREVIEW_PIXELS = 4194304  -- 2048x2048
+local applied_scale = scale
 if scale > 1 then
-    preview:resize(preview.width * scale, preview.height * scale)
+    local pw, ph = preview.width, preview.height
+    local wanted = pw * scale * ph * scale
+    if wanted > MAX_PREVIEW_PIXELS then
+        local factor = math.sqrt(MAX_PREVIEW_PIXELS / (pw * ph))
+        applied_scale = math.max(1, math.floor(factor))
+    end
+    if applied_scale > 1 then
+        preview:resize(pw * applied_scale, ph * applied_scale)
+    end
 end
 preview:saveCopyAs(output)
 preview:close()
@@ -79,4 +91,5 @@ print(json.encode({
     width = sprite.width, height = sprite.height,
     frames = frames, layers = layers, palette = palette, tags = tags, view = view,
     frame = want, frames_total = #sprite.frames,
+    scale = applied_scale, scale_clamped = applied_scale ~= scale,
 }))

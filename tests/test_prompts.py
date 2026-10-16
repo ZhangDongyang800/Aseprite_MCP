@@ -45,7 +45,7 @@ def test_create_sprite_prompt_contains_workflow(setup):
     )
 
     assert "create_sprite" in result
-    assert "get_canvas_preview" in result
+    assert "inspect" in result
     assert "save_sprite" in result
 
 
@@ -78,8 +78,8 @@ def test_iterate_sprite_prompt_contains_tools(setup):
         session_id="s1", feedback="测试反馈"
     )
 
-    assert "get_canvas_preview" in result
-    assert "clear_region" in result
+    assert "inspect" in result
+    assert "paint_grid" in result
 
 
 # ══════════════════════════════════════════
@@ -111,10 +111,10 @@ def test_create_tileset_prompt_contains_workflow(setup):
 
     result = prompts["create_tileset_prompt"](description="测试瓦片")
 
-    # 关键工具必须出现
-    assert "create_tileset_canvas" in result
-    assert "draw_from_grid" in result
-    assert "export_tiled_preview" in result
+    # 关键工具必须出现（瓦片画布就是普通大画布，用 create_sprite 建）
+    assert "create_sprite" in result
+    assert "paint_grid" in result
+    assert "inspect" in result
     assert "save_sprite" in result
 
 
@@ -157,7 +157,7 @@ def test_create_animation_prompt_contains_call_baseline(setup):
     # 调用基准段落
     assert "理想调用次数" in result
     # 批量工具优先
-    assert "draw_animation_frames" in result
-    assert "apply_timing_preset" in result
+    assert "paint_grid" in result
+    assert "set_durations" in result
     # 禁止逐帧循环
     assert "禁止" in result

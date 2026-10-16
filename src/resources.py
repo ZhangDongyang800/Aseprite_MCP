@@ -132,7 +132,7 @@ _TIMING_PRESETS = {
     },
 }
 
-# 瓦片布局模板（docs §8.2/§8.3），grid/colormap 可直接传入 draw_from_grid
+# 瓦片布局模板（docs §8.2/§8.3），grid/colormap 可直接改写成 paint_grid 的网格文件
 _TILESET_TEMPLATES = {
     "grass_dirt_16x16": {
         "name": "grass_dirt_16x16",
@@ -265,28 +265,28 @@ _PIXEL_ART_TIPS = {
     ],
     "outline": [
         "轮廓要连续不断裂，线宽统一",
-        "可用 add_outline 工具自动生成描边",
+        "把轮廓直接画进网格规划里（字符 K 通常留给轮廓色），没有单独的描边 op",
         "内轮廓（主体边缘内侧）用主色的暗化版本，不要全用黑色",
         "轮廓颜色可做色相偏移，比纯黑更有层次感",
     ],
     "symmetry": [
-        "对称图形只画一半，用 mirror_half 镜像复制",
-        "水平镜像用 axis=x，垂直镜像用 axis=y",
-        "position 参数设为画布宽度/2（如16x16画布 position=8）",
+        "对称图形在规划网格时就要左右对齐，行内字符成对镜像，而不是画完再镜像",
+        "规划时先定轴线（16x16 画布的中轴是第 8 列），逐行照着写两遍",
+        "像素坐标按 x/y 双向检查，避免手工镜像时差 1 像素",
     ],
     "animation": [
         "先画关键帧（最极端姿势），再补中间帧——这是专业动画的标准流程",
         "每帧只做小幅修改（1-3像素位移），保持动作连贯",
         "行走循环：腿臂交替摆动，身体微微上下起伏",
         "闪烁效果：缩放或明暗交替变化",
-        "使用洋葱皮（onion skin）思路：参考前后帧确保动作连贯",
+        "用 inspect 的 frame 参数逐帧对比，参考前后帧确保动作连贯",
     ],
     "workflow": [
         "专业流程：草图 → 线稿 → 平涂底色 → 阴影/高光 → 描边 → 导出",
-        "先用 draw_from_grid 一次性平涂所有底色和高光阴影",
-        "再用 add_outline 自动描边",
+        "先把底色和高光阴影全部写进网格规划，再用 paint_grid 一次平涂",
+        "描边同样写进网格规划（轮廓色占一个字符），不靠事后处理",
         "最后用 draw_pixel 做少量像素级修正",
-        "每步都用 get_canvas_preview 检查效果",
+        "每步都用 inspect 检查效果（scale 放大便于观察）",
     ],
 }
 
@@ -432,9 +432,12 @@ def register_resources(mcp, session_manager: SessionManager):
 
     @mcp.resource("aseprite://patterns/{name}")
     def get_sprite_pattern(name: str) -> str:
-        """获取指定精灵的完整网格布局参考（grid 和 colormap）。
+        """获取指定精灵的完整网格布局参考（grid 行串 + colormap 字符→色值）。
 
-        可直接将返回的 grid 和 colormap 传入 draw_from_grid 工具使用。
+        画到画布上要经过 paint_grid：把 colormap 拆成 Lua 的 palette 表、
+        把 grid 按 "/" 拆成 rows 数组，写成一个返回该表的 .lua 文件，
+        再用 apply_operations 的 {"op": "paint_grid", "path": "<绝对路径>"} 载入。
+        paint_grid 的文件在工作目录内可直接跑，指向外部路径需 confirmed=true。
         """
         pattern = _SPRITE_PATTERNS.get(name)
         if not pattern:
@@ -452,7 +455,10 @@ def register_resources(mcp, session_manager: SessionManager):
 
     @mcp.resource("aseprite://tileset/templates/{name}")
     def get_tileset_template(name: str) -> str:
-        """返回指定瓦片模板的完整 grid/colormap（可直接传入 draw_from_grid）。
+        """返回指定瓦片模板的完整 grid/colormap。
+
+        与 aseprite://patterns/{name} 同样要改写成 paint_grid 的网格文件使用；
+        用 paint_grid 的 x/y 把单块瓦片摆到画布上对应的格子。
 
         可用: grass_dirt_16x16, dungeon_16x16, water_grass_16x16
         """

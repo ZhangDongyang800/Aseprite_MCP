@@ -2,7 +2,86 @@
 
 基于专业像素艺术工作流设计：草图 → 线稿 → 平涂底色 → 阴影/高光 → 描边 → 导出。
 参考 Aseprite 官方文档和专业游戏美术实践。
+
+注意：工具面已经收敛到 apply_operations / inspect / run_lua 三个工具。
+这里写的每一个 op 名都必须真的在 op 注册表里，否则客户端照着调就是一个
+死循环 —— tools/ 里的旧工具早已删除。
 """
+
+
+def _parse_size(size: str, default: int = 16) -> tuple:
+    """把 "16x16" 解析成 (16, 16)，解析不了就用 default 兜底。
+
+    prompt 只是引导文案，不该因为一个奇怪的 size 参数就整个渲染失败。
+    """
+    try:
+        w, h = str(size).lower().split("x", 1)
+        return int(w), int(h)
+    except (AttributeError, TypeError, ValueError):
+        return default, default
+
+
+# 三个工具的用法。每个 prompt 都重复这段，因为 prompt 是独立发给 AI 的，
+# 拿不到彼此的上下文。
+_TOOL_SURFACE = """══════════════════════════════════════════
+工具面：只有三个工具，全部绘图都从这里进
+══════════════════════════════════════════
+
+apply_operations(ops, session_id=None, atomic=True, dry_run=False,
+                 confirmed=False, verbose=False)
+  唯一的变更入口。ops 是一个列表，每项形如 {"op": "<op名>", ...该 op 的参数}。
+  整批在一个事务里跑：atomic=true（默认）任一 op 失败即整体回滚，不留半成品。
+  - 省略 session_id 时，只要首个 op 是 create_sprite 或 open_sprite，
+    服务器会自动建会话并注入文件路径；返回值里的 session_id 就是后续要用的。
+  - dry_run=true 只校验并返回执行计划，不落笔。大批量前空跑一次很便宜。
+  - verbose=true 回显完整计划；否则 op_results 只给服务器才知道的新信息。
+
+inspect(session_id, scale=4, view="composite", frame=1)
+  只读预览，永不改动文档。返回放大图 + 量化指标：color_count（用了多少色）、
+  palette（实际用色）、bbox（内容包围盒）、coverage（覆盖率）、width/height。
+  动画用 frame（1 起）看指定帧，越界会夹到有效范围。
+
+run_lua(session_id, code, unsafe=False, confirmed=False)
+  逃逸舱，跑任意 Aseprite Lua。必须 unsafe=true 且 confirmed=true，两个都要。
+  只在 op 词汇确实做不到时用 —— 目前主要是新建图层。能用 op 表达的，不要用它。
+  CLI 模式下 snippet 失败会回滚 .ase，成功则留一份 undo 备份。
+
+── 破坏性 op 的确认门闩 ──
+  clear_canvas（清空当前层/帧）和 close_session（销毁会话）是破坏性 op。
+  批量里只要出现其中一个，没带 confirmed=true 就整批拒绝，什么都不会发生。
+  → 重画或收工销毁时，apply_operations 要显式传 confirmed=true。
+
+── op 词汇表（完整，就这些）──
+  会话  create_sprite(width, height, color_mode) / open_sprite(path) /
+        save_sprite(path) / close_session
+  绘制  draw_pixel(x, y, color) / draw_rect(x, y, width, height, color, filled) /
+        fill_region(x, y, color) / paint_grid(path, x, y) / clear_canvas
+  结构  add_frames(count, duration, duplicate) / set_durations(durations) /
+        add_tag(name, from_frame, to_frame)
+  历史  undo / redo（必须单独成批，不能和其他 op 混在一批里）
+  所有绘制类 op 都接受 layer（1 起）和 frame（1 起），默认都是 1。
+
+── 两件必须知道的事 ──
+  1. 新建的精灵只有 1 层 1 帧。帧不够用 add_frames 补；图层没有对应的 op，
+     第 2 层及以后必须先用 run_lua 建出来 —— 没有更省事的办法，别去编。
+  2. paint_grid 的 path 必须指向一个 Lua 数据文件，返回
+     {palette = {字符="#RRGGBB", ...}, rows = {"...", ...}}。
+     Aseprite 这版 Lua 没有 loadstring，JSON 读不出 table，所以只能用这个格式。
+     文件在服务器工作目录内可直接跑；指向目录外需要 confirmed=true。
+
+── paint_grid 网格文件长这样 ──
+    -- mushroom.lua
+    return {
+      palette = { K = "#000000", R = "#E74C3C", W = "#FFFFFF", S = "#F5DEB3" },
+      rows = {
+        "................",
+        ".....KKKKKK.....",
+        "....KRRRRRRK....",
+        "....KRRWWWWRK...",
+      },
+    }
+  "." 表示该像素不画。网格里出现 palette 没有的字符、或画到画布外，
+  都会让整批报错回滚 —— 先 dry_run=true 空跑确认放得下，能省一整轮返工。"""
 
 
 def register_prompts(mcp):
@@ -31,18 +110,19 @@ def register_prompts(mcp):
             grid_example = _GRID_16X16_TEMPLATE
             palette_suggestion = _PALETTE_SUGGESTIONS["icon"]
 
-        return f"""请使用 Aseprite MCP 工具绘制一个精灵：{description}
+        width, height = _parse_size(size)
+
+        return f"""请使用 Aseprite MCP 绘制一个精灵：{description}
+
+{_TOOL_SURFACE}
 
 ══════════════════════════════════════════
 专业像素艺术工作流程（草图 → 线稿 → 平涂 → 阴影 → 描边）：
 ══════════════════════════════════════════
 
-第1步：创建画布
-  调用 create_sprite 创建 {size} 画布
-
-第2步：规划像素布局（关键步骤！）
-  在绘制前，先用文本网格规划整个精灵的像素布局。
-  这是专业像素艺术的核心——先规划再绘制，而不是边画边想。
+第1步：规划像素布局（先规划，再绘制）
+  在绘制前先用文本网格规划整个精灵的像素布局。
+  这是专业像素艺术的核心 —— 先规划再绘制，而不是边画边想。
 
   规划方法：
   a) 先确定配色方案（从下方参考中选择或自定义），为每种颜色分配字符代号
@@ -51,43 +131,47 @@ def register_prompts(mcp):
 
   字符代号示例：
     K=#000000（轮廓）, R=#E74C3C（底色）, W=#FFFFFF（高光）
-    S=#C0392B（阴影）, .=transparent（透明背景）
+    S=#C0392B（阴影）, .=不画（透明背景）
 
-第3步：用 draw_from_grid 一次性平涂绘制（★核心步骤★）
-  将规划好的网格字符串传入 draw_from_grid 工具。
-  一次调用即可绘制整幅图——不要用 draw_rect/draw_pixel 逐个画！
+第2步：整幅图一次画完，不要逐像素
+  规划好的网格写成一个 Lua 文件（格式见上），然后一次批量完成建画布 + 上色：
 
-  示例调用：
-    draw_from_grid(
-      grid=".....KKKKKK...../....KRRRRRRK..../...KRRWWWWRRK.../...KRWWWWWWRK.../...",
-      colormap="K=#000000,R=#E74C3C,W=#FFFFFF,S=#F5DEB3,.=transparent"
-    )
+    apply_operations(ops=[
+      {{"op": "create_sprite", "width": {width}, "height": {height}}},
+      {{"op": "paint_grid", "path": "<上面那个 .lua 文件的绝对路径>"}},
+    ])
+
+  paint_grid 是画完整幅图的首选，一次调用搞定 —— 不要用
+  draw_pixel 逐个画，也不要一个像素一个 op。
 
   网格规划要点（遵循像素艺术规范）：
   - 斜线保持 45 度角，阶梯均匀（如 1-2-2-1 排列），避免锯齿
   - 轮廓线宽度统一为 1 像素，保持连续不断裂
+  - 描边直接写进网格（K 字符），没有单独的描边 op
+  - 对称图形在规划时就左右对称地写，不要指望事后镜像
   - 光源默认设在左上方：高光在左上侧，阴影在右下侧
   - 主体居中，留出 1-2 像素边距
 
-第4步：预览检查（必须执行！）
-  调用 get_canvas_preview（scale=4 放大4倍便于观察）
+第3步：inspect 预览检查（必须执行！）
+  inspect(session_id, scale=4) —— 放大 4 倍便于观察，同时给出量化指标。
   检查要点：
   - 剪影是否辨识？（纯黑色也能认出是什么吗？）
   - 轮廓是否连续清晰？
-  - 颜色对比是否足够？
+  - color_count 是否在 4-8 色的节制范围内？palette 里有没有你压根没打算用的颜色？
+  - bbox 是否居中、coverage 是否合理（太低说明主体画得太小或偏了）？
   - 是否有像素错位或遗漏？
 
-第5步：修正与迭代（至少2轮！）
-  根据预览分析结果修正：
-  - 形状不对 → clear_region 清除问题区域，重新 draw_from_grid
-  - 缺少描边 → 调用 add_outline 自动添加轮廓
-  - 对称修正 → 用 mirror_half 镜像复制（只画一半再镜像）
-  - 颜色调整 → 用 replace_color 替换不满意的颜色
-  - 细节微调 → 用 draw_pixel 修正 1-3 个像素（仅少量修正）
-  修正后再次 get_canvas_preview 验证
+第4步：修正与迭代（至少2轮！）
+  - 形状或配色整体不对 → 用 {{"op": "clear_canvas"}} 整层清空后重新 paint_grid
+    （clear_canvas 是破坏性 op，批量里必须带 confirmed=true）
+  - 只差 1-3 个像素 → 用 draw_pixel 定点修正，不要为了两个像素整层重画
+  - 大片同色区域 → draw_rect（画色块）或 fill_region（填已有区域）
+  - 想换配色 → 改网格文件里的 palette 色值再 paint_grid 重画，比逐像素换色稳
+  每轮修正后再次 inspect 验证。
 
-第6步：保存
-  调用 save_sprite 保存最终结果
+第5步：保存
+  apply_operations(ops=[{{"op": "save_sprite"}}]) —— 不给 path 就落回会话的 .ase。
+  收工要销毁会话时 close_session 也是破坏性 op，同样需要 confirmed=true。
 
 ══════════════════════════════════════════
 坐标网格规划模板（{size}）：
@@ -103,17 +187,17 @@ def register_prompts(mcp):
 - 使用 4-8 种颜色（专业像素艺术的核心约束）
 - 每种主色必须配套阴影色（RGB×0.7）和高光色（RGB×1.3，上限255）
 - 轮廓色统一使用最深色（通常 #000000）
-- 使用 indexed 色彩模式（create_sprite 默认 rgb，可改为 indexed）
+- create_sprite 的 color_mode 默认 rgb，可改为 indexed（像素画更推荐）
 
 ══════════════════════════════════════════
-工具使用优先级：
+op 使用优先级：
 ══════════════════════════════════════════
-  1. draw_from_grid  ← 绘制完整精灵（首选，1次调用）
-  2. add_outline     ← 自动描边（后期处理）
-  3. mirror_half     ← 对称镜像（减少工作量）
-  4. draw_pixel      ← 仅修正1-3个像素
-  5. draw_rect       ← 仅画背景大色块
-  6. draw_line       ← 仅画结构线（剑、法杖）
+  1. paint_grid    ← 整幅图一次画完（首选，1 次调用）
+  2. draw_pixel    ← 仅修正1-3个像素
+  3. draw_rect     ← 画背景大色块 / 结构块
+  4. fill_region   ← 已有区域的同色填充
+  5. clear_canvas  ← 推倒重来（破坏性，需 confirmed=true）
+  6. run_lua       ← 仅限新建图层等 op 做不到的事（需 unsafe + confirmed）
 """
 
     @mcp.prompt
@@ -128,22 +212,28 @@ def register_prompts(mcp):
 
 反馈意见：{feedback}
 
+{_TOOL_SURFACE}
+
 迭代修正工作流程：
-1. 调用 get_canvas_preview（scale=4）查看当前画布状态
+1. inspect(session_id="{session_id}", scale=4) —— 先看清现状，别凭记忆改
 2. 仔细分析图片，对照反馈意见定位需要修改的区域
-3. 根据问题类型选择修正方式：
-   - 大面积修改 → clear_region 清除后用 draw_from_grid 重画
-   - 缺少描边 → 调用 add_outline 自动添加轮廓
-   - 颜色不满意 → 调用 replace_color 替换颜色
-   - 不对称 → 用 mirror_half 镜像修正
-   - 少量像素错误 → 用 draw_pixel 修正（仅1-3个）
-4. 再次调用 get_canvas_preview 验证修正效果
+3. 根据问题类型选择修正方式（都在 apply_operations 里）：
+   - 大面积要改 → {{"op": "clear_canvas", "layer": L}} 清除后重新 paint_grid
+     （clear_canvas 是破坏性 op，批量必须带 confirmed=true）
+   - 只差1-3个像素 → draw_pixel 定点修正（最省事，也最不容易改坏别处）
+   - 颜色不满意 → 改网格文件的 palette 再 paint_grid 重画，比逐像素换色稳
+   - 缺少描边 → 把轮廓色写进网格规划，用 paint_grid 重画
+   - 不对称 → 在网格规划里就左右对称地写，没有事后镜像的 op
+4. 再次 inspect 验证修正效果
 5. 如果不满意，重复步骤 3-4（至少迭代2轮）
-6. 满意后调用 save_sprite 保存
+6. 满意后 apply_operations(ops=[{{"op": "save_sprite"}}])
 
 迭代要点：
-- 每次只改一处，改完预览验证后再改下一处
-- 大面积修改必须先 clear_region 再重画，避免颜色叠加
+- 每次只改一处，改完 inspect 验证后再改下一处
+- 大面积修改必须先 clear_canvas 再重画，避免新旧颜色叠加打架
+- 连续几轮没进展 → 先看 inspect 的量化指标（color_count / bbox / coverage），
+  用数据定位问题，而不是继续盲改
+- 走错了一步 → apply_operations(ops=[{{"op": "undo"}}]) 撤销（undo 必须单独成批）
 """
 
     @mcp.prompt
@@ -162,57 +252,83 @@ def register_prompts(mcp):
             size: 画布尺寸，如 32x32
         """
         duration = round(1.0 / fps, 4)
-        return f"""请使用 Aseprite MCP 工具创建一个动画：{description}
+        width, height = _parse_size(size, default=32)
+        extra_frames = max(frame_count - 1, 0)
+
+        return f"""请使用 Aseprite MCP 创建一个动画：{description}
 
 动画参数：{frame_count} 帧，{fps} fps（每帧 {duration} 秒），画布 {size}
+
+{_TOOL_SURFACE}
 
 ══════════════════════════════════════════
 专业动画工作流程：
 ══════════════════════════════════════════
 
-第1步：创建画布并绘制关键帧
-  1. 调用 create_sprite 创建 {size} 画布
-  2. 用 draw_from_grid 绘制第1帧（关键帧——最标准的姿势）
-  3. 调用 get_canvas_preview 预览，确保造型满意
-  4. 如不满意，clear_region + draw_from_grid 重画
+第1步：建画布并绘制第1帧
+  关键帧 = 最标准的姿势。一次批量做完建画布 + 上色：
 
-第2步：绘制其他关键帧
-  专业动画师先画关键帧（最极端姿势），再补中间帧：
+    apply_operations(ops=[
+      {{"op": "create_sprite", "width": {width}, "height": {height}}},
+      {{"op": "paint_grid", "path": "<第1帧网格文件>", "frame": 1}},
+    ])
+
+  然后 inspect 确认造型满意。不满意就 clear_canvas（破坏性 op，
+  批量带 confirmed=true）重来。
+
+第2步：一次加满所有帧
+  add_frames 是唯一加帧的 op，一次 count 补齐，别循环加 1 帧：
+
+    apply_operations(ops=[
+      {{"op": "add_frames", "count": {extra_frames}, "duration": {duration}, "duplicate": true}},
+    ])
+
+  duplicate=true 让新帧带上上一帧的内容作为起点 —— 空白帧从头重画
+  是帧间脱节的头号来源。duration 一并给上，省掉后面逐帧设。
+
+第3步：逐帧只改变化的部分
+  所有绘制类 op 都吃 frame 参数（1 起）。核心原则：
+  **帧 N+1 = 帧 N + 增量**
+
   - 行走循环的关键帧：站立 → 迈左腿最远 → 站立 → 迈右腿最远
-  - 每个关键帧用 draw_from_grid 一次性绘制
+  - 每帧只重画真正会动的像素（1-3 像素位移），静态部分一个都别碰
+  - 用 paint_grid 的 x/y 指定变化区域的左上角，只重画那块
+  - 帧间的对照就是拿 inspect 的 frame 参数一帧一帧看
 
-  对每一帧：
-  1. 调用 add_frame（content="copy"）复制上一帧作为基础
-  2. 用 clear_region 清除需要变化的部分
-  3. 用 draw_from_grid 绘制本帧变化内容（只画变化部分即可）
-  4. 调用 get_canvas_preview 预览检查
-
-第3步：设置帧时长
-  对每一帧调用 set_frame_duration 设置时长为 {duration} 秒
+  同一批里可以放多个 op（都是对第 F 帧的修改），一次调用提交。
 
 第4步：逐帧检查动画连贯性
-   对每一帧调用 get_canvas_preview 检查：
+  inspect(session_id, frame=F, scale=4) 逐帧检查：
   - 相邻帧变化是否太大或太小？（行走动画每帧位移 1-2 像素）
-  - 是否有抖动（不该动的像素在跳动）？
+  - 有没有抖动（不该动的像素在跳动）？
   - 动作是否流畅？
 
-第5步：导出与保存
-   1. 可选：调用 add_tag 创建动画标签（如"Walk"），设置播放方向
-   2. 调用 export_gif 导出 GIF 动画
-   3. 调用 save_sprite 保存
+  inspect 是只读的，随时可以看。一次看不全就多调几次 frame。
+  量化指标也能看：bbox 应该逐帧平滑移动，不该忽大忽小；
+  coverage 在一个循环里应当大致稳定。
+
+第5步：设帧时长、打标签、保存
+  - 不要所有帧用同一个时长（蓄力短、命中长是专业做法）：
+    查 aseprite://timing/presets 拿建议值，然后
+    apply_operations(ops=[{{"op": "set_durations", "durations": [...]}}]) 一次设完
+    （单位是秒，每个值满足 0 < d <= 60）
+  - apply_operations(ops=[{{"op": "add_tag", "name": "Walk", "from_frame": 1,
+    "to_frame": {frame_count}}}]) 给帧区间命名，之后按标签播放（可选）
+  - apply_operations(ops=[{{"op": "save_sprite"}}])
 
 ══════════════════════════════════════════
 理想调用次数（{frame_count} 帧，调用优化基准）：
 ══════════════════════════════════════════
-  create_sprite(1) → draw_animation_frames(1) → apply_timing_preset(1)
-  → check_canvas_standards(1) → [pass]export_gif(1) = 5 次
-禁止：逐帧循环 draw_from_grid / 逐帧 set_frame_duration / 每步必 preview
+  create_sprite(1) + paint_grid(1) + add_frames(1) + [每帧 paint_grid 1 次]
+  → set_durations(1) + add_tag(1) + save_sprite(1) + inspect(1~2)
+  禁止：逐帧循环 add_frames / 逐帧单独调 set_durations / 每帧都 inspect
+        / 每帧整幅空白重画
 
 动画规范：
 - 每帧只做小幅修改（1-3像素位移），保持动作连贯
 - 先画关键帧（最极端姿势），再补中间帧
-- 对称动作可以用 mirror_half 减少工作量
-- draw_from_grid 的 offset 参数可在帧间做微调
+- add_frames(duplicate=true) 让每帧从上一帧继承，别从空白起步
+- 对称动作（如走路摆臂）在网格规划里就左右对称地写
 """
 
     @mcp.prompt
@@ -222,10 +338,10 @@ def register_prompts(mcp):
         fps: int = 8,
         size: str = "32x32",
     ) -> str:
-        """生成动画一致性工作流引导（帧继承 + 补间 + 差异验证）。
+        """生成动画一致性工作流引导（帧继承 + 增量编辑 + 逐帧验证）。
 
         解决 AI 动画最常见的帧间脱节问题：每帧必须基于上一帧做增量，
-        静态部分由 propagate_cels 保证零差异，动态部分用补间或局部编辑。
+        静态部分靠 add_frames(duplicate=true) 继承，动态部分只局部重画。
 
         Args:
             description: 动画描述（如"行走循环"、"挥剑攻击"）
@@ -234,56 +350,77 @@ def register_prompts(mcp):
             size: 画布尺寸，如 32x32
         """
         duration = round(1.0 / fps, 4)
-        return f"""请使用 Aseprite MCP 工具创建动画：{description}
+        width, height = _parse_size(size, default=32)
+        extra_frames = max(frame_count - 1, 0)
+
+        return f"""请使用 Aseprite MCP 创建动画：{description}
 
 动画参数：{frame_count} 帧，{fps} fps（每帧 {duration} 秒），画布 {size}
+
+{_TOOL_SURFACE}
 
 ══════════════════════════════════════════
 帧间一致性工作流（核心原则：帧 N+1 = 帧 N + 增量）
 ══════════════════════════════════════════
 
-第1步：分层规划（决定哪些层会动）
-  1. 调用 create_sprite 创建 {size} 画布
-  2. 用 add_layer 为"会动的部件"建独立图层（如 Body、Arm、Sword）
-     —— 静态层（身体主干、背景）和动态层（四肢、武器）必须分开
-  3. 用 draw_from_grid 绘制第 1 帧关键姿势（layer 指定到各层）
+第1步：一次性把帧数铺好
+  帧一致性从结构上保证，不靠事后补救。一次批量搞定建画布 + 第1帧 + 全部帧：
 
-第2步：固定静态部分（关键！）
-  调用 propagate_cels（source_frame=1, to_frame={frame_count}）
-  把静态层从第 1 帧复制到全部帧 —— 静态像素帧间零差异由构造保证
+    apply_operations(ops=[
+      {{"op": "create_sprite", "width": {width}, "height": {height}}},
+      {{"op": "paint_grid", "path": "<第1帧关键姿势网格>", "frame": 1}},
+      {{"op": "add_frames", "count": {extra_frames}, "duration": {duration},
+        "duplicate": true}},
+    ])
 
-第3步：逐帧做增量编辑（只改动态层）
-  对每一帧：
-  1. 调用 add_frame（content="copy"）复制上一帧
-  2. 只改动的部分：
-     - 肢体平移 → move_cel / tween_cel_positions
-     - 肢体缩放（呼吸、压扁）→ tween_cel_scale
-     - 淡入淡出 → tween_cel_opacity
-     - 局部像素变化 → clear_region + draw_from_grid 只重画变化区域
-  3. 绝对不要整帧重画！重画必失真
+  duplicate=true 是这里的关键：静态像素从第 1 帧一路复制到全部帧，
+  帧间零差异由构造保证，不是靠你记得重画。
 
-第4步：验证帧间差异（必须执行！）
-  对每对相邻帧调用 compare_frames 检查：
-  - changed_pct 是否合理？（动作帧通常 <30%，过大=脱节，过小=没动）
-  - bbox 是否集中在预期区域？（挥剑应集中在剑臂附近）
-  - 静态层 changed 是否为 0？
-  再用 export_contact_sheet 一次看完整条动画，检查连贯性
+第2步：逐帧做增量编辑（只改会动的那几像素）
+  对每一帧（frame 从 1 起）：
+  - 只重画变化的像素，幅度控制在 1-3 像素
+  - 用 paint_grid 的 x/y 把改动精确摆到帧内对应位置，
+    网格文件只写这块变化区域，不必重写整帧
+  - 肢体平移 / 呼吸缩放这类整体位移，核心仍然是"只动会动的像素"
+  - **绝对不要整帧空白重画！** 重画必失真，静态细节（高光、纹样、
+    脸部特征）每一帧都会漂移
 
-第5步：设置帧时长与保存
-  1. 调用 apply_timing_preset（或逐帧 set_frame_duration 设 {duration} 秒）
-  2. 调用 export_gif 导出预览
-  3. 调用 save_sprite 保存
+  同一帧的多个改动可以放在同一批 apply_operations 里提交。
+
+第3步：逐帧验证差异（必须执行！）
+  inspect(session_id, frame=F) 对每对相邻帧检查：
+  - 变化的像素是不是集中在预期区域？（挥剑应集中在剑臂附近）
+  - bbox 的移动是否平滑？不该忽大忽小
+  - coverage 在一个循环里是否大致稳定？
+  - 静态像素有没有跟着抖？（看前一帧再开后一帧比对）
+
+  inspect 只读、便宜，多看几帧比画完再看一遍划算。
+  想量化地确认哪几帧出了问题，就把相邻两帧各 inspect 一次对比 bbox。
+
+第4步：设置帧时长与保存
+  - 查 aseprite://timing/presets 拿建议时长（蓄力短、命中长），然后
+    apply_operations(ops=[{{"op": "set_durations", "durations": [...]}}]) 一次设完
+    （单位是秒，每个值满足 0 < d <= 60；不要全帧同一个值）
+  - apply_operations(ops=[{{"op": "add_tag", "name": "Attack", "from_frame": 1,
+    "to_frame": {frame_count}}}]) 给整条动画命名（可选）
+  - apply_operations(ops=[{{"op": "save_sprite"}}])
 
 ══════════════════════════════════════════
-工具使用优先级：
+分层说明（诚实版）：══════════════════════════════════════════
+  "会动的部件单独建层"是好习惯，但**没有新建图层的 op**。
+  新建的精灵只有第 1 层。想分层就得先用 run_lua 建层
+  （需要 unsafe=true 且 confirmed=true），之后绘制 op 的 layer 参数才有意义。
+  不分层也能用上面的增量编辑法做好帧一致性 —— 分层只是锦上添花。
+
 ══════════════════════════════════════════
-  1. propagate_cels     ← 静态层一次性铺满全部帧（首选）
-  2. add_frame(copy)    ← 帧间继承（绝不 blank 重画）
-  3. tween_cel_*        ← 位置/缩放/透明度补间（数学插值不抖动）
-  4. compare_frames     ← 量化验证帧间差异（每对相邻帧必查）
-  5. export_contact_sheet ← 整条动画总览（一次看全部帧）
-  6. draw_from_grid     ← 仅局部修改时指定 offset 重画变化区域
-禁止：每帧从空白开始重画 / 跳过 compare_frames 验证
+op 使用优先级：
+══════════════════════════════════════════
+  1. add_frames(duplicate=true) ← 帧间继承，绝不空白重画
+  2. paint_grid(x, y)          ← 仅局部修改时精确重画变化区域
+  3. draw_pixel               ← 1-3 个像素的定点修正
+  4. set_durations             ← 一次设完全部帧时长
+  5. add_tag                   ← 给帧区间命名
+禁止：每帧从空白开始重画 / 跳过 inspect 逐帧验证
 """
 
     @mcp.prompt
@@ -299,50 +436,85 @@ def register_prompts(mcp):
             layer_count: 图层数量（默认3层：背景、主体、前景）
             size: 画布尺寸，如 32x32
         """
-        return f"""请使用 Aseprite MCP 工具创建一个多图层作品：{description}
+        width, height = _parse_size(size, default=32)
+
+        return f"""请使用 Aseprite MCP 创建一个多图层作品：{description}
 
 图层数量：{layer_count} 层，画布 {size}
 
+{_TOOL_SURFACE}
+
 ══════════════════════════════════════════
-专业多图层工作流程：
+多图层现实（先看这段，免得白忙）
+══════════════════════════════════════════
+  **op 词汇表里没有新建图层的 op。** 新建的精灵只有第 1 层。
+  所以 layer_count > 1 时，流程必然是：
+
+    run_lua 建层 → 再用 apply_operations 逐层绘制
+
+  run_lua(session_id, code, unsafe=true, confirmed=true) —— 两个开关都必须传，
+  缺一个就被门闩挡住。建层就是往当前精灵的 layers 里插新层，
+  具体 Lua 自行斟酌，失败会回滚文档，不会留下半成品。
+
+  只有一个图层时，跳过 run_lua，直接在第 1 层上画。
+
+══════════════════════════════════════════
+多图层工作流程：
 ══════════════════════════════════════════
 
-第1步：创建画布和图层
-  1. 调用 create_sprite 创建 {size} 画布（第1层为默认背景层）
-  2. 调用 add_layer 创建额外图层（共 {layer_count} 层）
-  3. 调用 get_layer_info 确认图层结构
+第1步：建画布，建层
+  apply_operations(ops=[{{"op": "create_sprite", "width": {width},
+                        "height": {height}}}])
+  然后 run_lua 把第 1 层改成背景层，再加出主体层、前景层。
+
+  注意：层号是 1 起的（Aseprite 惯例，越大越靠上），
+  绘制 op 的 layer 参数直接用这个层号。
 
 第2步：逐层绘制（从背景到前景）
-  背景层（layer=1）：
-  - 用 draw_from_grid 绘制背景（大色块为主，细节少）
-  - 背景颜色偏冷偏暗，不抢主体
+  每层各写一份网格文件（背景层可以复用同一份网格 + 不同 x/y），
+  用 paint_grid 的 layer 参数指定画到哪一层：
 
-  主体层（layer=2）：
-  - 用 draw_from_grid 绘制主要角色（视觉焦点）
-  - 细节最多，颜色最丰富
-  - 画完后调用 add_outline 自动描边
+    apply_operations(ops=[
+      {{"op": "paint_grid", "path": "<背景网格>", "layer": 1}},
+      {{"op": "paint_grid", "path": "<主体网格>", "layer": 2}},
+      {{"op": "paint_grid", "path": "<前景网格>", "layer": 3}},
+    ])
 
-  前景层（layer=3，如有）：
-  - 绘制前景细节（如草地、雾气、光效）
-  - 可用 set_layer_properties 设半透明（opacity=128）
+  背景层：大色块为主，细节少，颜色偏冷偏暗，不抢主体
+  主体层：视觉焦点，细节最多，颜色最丰富
+  前景层：前景细节（草地、雾气、光效），只画必要的东西
 
-  每层画完后调用 get_canvas_preview 检查
+  描边直接写进主体层的网格规划（轮廓色占一个字符），
+  没有单独的描边 op。
 
 第3步：调整图层混合
-  使用 set_layer_properties 调整：
-  - 不透明度：0-255（128=半透明）
-  - 混合模式：normal, multiply, screen, overlay, darken, lighten
+  透明度（0-255，128=半透明）和混合模式（normal / multiply / screen /
+  overlay / darken / lighten，完整列表见 aseprite://blendmodes）
+  **同样没有对应的 op**，要调得走 run_lua（unsafe + confirmed）。
   建议尝试：
     - 阴影层用 multiply 让阴影更自然
     - 光效层用 screen 或 lighten 增加光感
 
-第4步：整体预览与迭代
-  1. 调用 get_canvas_preview 预览整体效果
-  2. 如需修改特定图层，绘制时指定 layer 参数
-  3. 至少迭代2轮：检查各层是否协调，主体是否突出
+  不折腾混合模式也能出好效果 —— 调色和层次本来就在网格规划里。
+
+第4步：inspect 整体预览与迭代
+  inspect(session_id, scale=4) 合成预览（默认 view="composite"），
+  看整体效果和量化指标：
+  - 各层是否协调，主体是否突出？
+  - color_count 是否还在节制范围内？
+  - bbox 是否落在预期区域、coverage 是否合理？
+  至少迭代2轮，只改有问题的那一层（指定 layer 参数）。
 
 第5步：保存
-  调用 save_sprite 保存
+  apply_operations(ops=[{{"op": "save_sprite"}}])
+
+══════════════════════════════════════════
+诚实的能力边界：
+══════════════════════════════════════════
+  - 建层、调图层属性/混合模式 → 只能 run_lua（unsafe + confirmed）
+  - 帧的相关操作 → 用 add_frames / set_durations / add_tag，不必碰 Lua
+  - 其余绘制 → apply_operations 的 op 就够了
+  - 收工销毁会话 → close_session 是破坏性 op，需要 confirmed=true
 """
 
     @mcp.prompt
@@ -357,41 +529,65 @@ def register_prompts(mcp):
             cols: 横向瓦片数
             rows: 纵向瓦片数
         """
-        return f"""请使用 Aseprite MCP 工具创建瓦片集：{description}
+        tile_w, tile_h = _parse_size(tile_size)
+        canvas_w = tile_w * cols
+        canvas_h = tile_h * rows
 
-参数：{tile_size} 瓦片，{cols}x{rows} 布局
+        return f"""请使用 Aseprite MCP 创建瓦片集：{description}
+
+参数：{tile_size} 瓦片，{cols}x{rows} 布局（画布 {canvas_w}x{canvas_h}）
+
+{_TOOL_SURFACE}
 
 ══════════════════════════════════════════
 专业 Tileset 工作流程（docs §8）：
 ══════════════════════════════════════════
 
-第1步：创建瓦片画布
-  调用 create_tileset_canvas（tile_size={tile_size.split('x')[0]}, cols={cols}, rows={rows}）
-  网格自动设为瓦片尺寸，清晰看到每块边界，避免越界污染相邻瓦片。
+第1步：建瓦片画布
+  没有"建瓦片画布"的专用 op —— 画布就是一张普通大画布，
+  尺寸自己算出来（tile_size={tile_w}，所以 {cols}x{rows} 格 = {canvas_w}x{canvas_h}）：
+
+    apply_operations(ops=[
+      {{"op": "create_sprite", "width": {canvas_w}, "height": {canvas_h}}},
+    ])
+
+  注意：坐标网格和"瓦片网格"是两回事。Aseprite 里那个网格线只是编辑器辅助，
+  不会替你划格子；边界要自己在规划时对齐到 tile_size 的整数倍位置。
 
 第2步：读取瓦片模板（可选参考）
-  调用 aseprite://tileset/templates 查看可用模板
-  调用 aseprite://tileset/templates/{{name}} 取具体 grid/colormap
+  读取 aseprite://tileset/templates 查看可用模板，
+  读取 aseprite://tileset/templates/{{name}} 取具体 grid/colormap。
+  它们给的是 grid 行串 + "字符=#RRGGBB" 映射，改写成上面那种 Lua
+  {{palette=..., rows=...}} 文件就能直接喂给 paint_grid。
 
-第3步：绘制瓦片
-  用 draw_from_grid 绘制单块瓦片（用 offset_x/offset_y 定位到瓦片格）
-  完整一套需：中心块、边缘块、角块、过渡瓦片、装饰块（docs §8.3）
+第3步：逐块绘制
+  每块瓦片一个网格文件，用 paint_grid 的 x/y 摆到对应格子：
+  第 r 行第 c 列瓦片的左上角 = (c × {tile_w}, r × {tile_h})。
+
+    apply_operations(ops=[
+      {{"op": "paint_grid", "path": "<中心块网格>", "x": {tile_w}, "y": {tile_h}}},
+      {{"op": "paint_grid", "path": "<边缘块网格>", "x": 0, "y": {tile_h}}},
+    ])
+
+  完整一套需：中心块、边缘块、角块、过渡瓦片、装饰块（docs §8.3）。
+  一批里可以放多个块的 paint_grid，一次提交。
 
 第4步：检查接缝（必须执行！）
-  调用 export_tiled_preview（repeat=2）导出 2x2 拼接预览
-  检查拼接处是否有可见接缝：
+  没有"拼接预览"工具，用 inspect 顶替 —— 它的只读预览可以放大观察：
+  inspect(session_id, scale=4) 看清每一块的边缘像素，再逐块比对：
   - 边缘像素是否与相邻瓦片匹配？
   - 是否有 1 像素偏移？
-  有接缝 → 修正边缘像素 → 再次 export_tiled_preview 验证
+  有接缝 → 修正该瓦片边缘像素 → 再次 inspect 验证。
+  一块接缝就是一处返工，逐块过一遍比整体返工便宜。
 
 第5步：保存
-  调用 save_sprite 保存
+  apply_operations(ops=[{{"op": "save_sprite"}}])
 
 ══════════════════════════════════════════
 理想调用次数（docs §8 工作流）：
 ══════════════════════════════════════════
-  create_tileset_canvas(1) → draw_from_grid(N块) → export_tiled_preview(1)
-  → [修正] → export_tiled_preview(1) → save_sprite(1)
+  create_sprite(1) → paint_grid(N块，可分批提交) → inspect(1~2)
+  → [修正] → paint_grid(仅修正边缘) → save_sprite(1)
 禁止：逐像素绘制瓦片、跳过接缝检查
 """
 
@@ -419,7 +615,7 @@ _GRID_16X16_TEMPLATE = """```
  14 ................
  15 ................
 ```
-说明：K=轮廓, R=底色, W=高光, S=阴影, .=透明
+说明：K=轮廓, R=底色, W=高光, S=阴影, .=不画
 注意斜线保持阶梯均匀（如轮廓的 45 度角部分）。
 这是一个蘑菇的示例布局。绘制时替换为你需要的字符和颜色。"""
 
@@ -446,7 +642,7 @@ _GRID_32X32_TEMPLATE = """```
  18 .........KSSSSSSSSK.............
  19 ................................
 ```
-说明：K=轮廓, R=底色, W=高光, S=阴影, .=透明
+说明：K=轮廓, R=底色, W=高光, S=阴影, .=不画
 注意光源在左上方——高光(W)在左上，阴影(S)在右下。
 这是角色示例布局。绘制时替换为你需要的字符和颜色。"""
 
@@ -504,9 +700,9 @@ _PALETTE_SUGGESTIONS = {
   Y=#FFEC27  宝石高光（黄色）""",
 
     "icon": """图标配色（4-5色）：
-  心形：K=#000000, R=#E74C3C, S=#C0392B, W=#FFB3B3, .=transparent
-  星星：K=#000000, Y=#FFEC27, O=#FFA300, W=#FFF8DC, .=transparent
-  剑：  K=#000000, B=#C0C0C0, D=#808080, G=#8B4513, W=#FFFFFF, .=transparent
-  盾：  K=#000000, B=#2980B9, D=#1B4F72, G=#DAA520, W=#FFFFFF, .=transparent
-  药水：K=#000000, R=#E74C3C, S=#C0392B, W=#FFB3B3, G=#2ECC71, .=transparent""",
+  心形：K=#000000, R=#E74C3C, S=#C0392B, W=#FFB3B3, .=不画
+  星星：K=#000000, Y=#FFEC27, O=#FFA300, W=#FFF8DC, .=不画
+  剑：  K=#000000, B=#C0C0C0, D=#808080, G=#8B4513, W=#FFFFFF, .=不画
+  盾：  K=#000000, B=#2980B9, D=#1B4F72, G=#DAA520, W=#FFFFFF, .=不画
+  药水：K=#000000, R=#E74C3C, S=#C0392B, W=#FFB3B3, G=#2ECC71, .=不画""",
 }

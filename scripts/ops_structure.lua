@@ -4,6 +4,10 @@ if not _G._mcp_common_loaded then
     if d then pcall(dofile, d .. "mcp_common.lua") end
 end
 
+-- 单位：`Frame.duration` 与这两个 op 的入参都是**秒**（src/v2/ops/structure_ops.py 的校验器
+-- 原文 "every duration is in seconds"）。这里不要"顺手补一个 x1000"：Aseprite 内部按毫秒
+-- 存，但 Lua 接口给的就是秒，实测 0.1/0.2/0.3 秒导出的 GIF 延时正是 100/200/300ms，
+-- 由 tests/v2/test_e2e_v2.py::test_duration_unit_survives_into_an_exported_gif 钉住。
 function _G._mcp_op_add_frames(sprite, params)
     local count = params.count
     if count < 1 then error("count must be >= 1") end

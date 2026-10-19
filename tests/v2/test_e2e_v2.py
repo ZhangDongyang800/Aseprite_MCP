@@ -183,6 +183,45 @@ def test_structural_ops_survive_a_save_and_reopen(api, tmp_path):
 
 
 @skip_no_aseprite
+def test_duration_unit_survives_into_an_exported_gif(api, tmp_path):
+    """帧时长的单位契约要用**真实播放产物**钉住，而不是回读同一个 Lua 字段。
+
+    op 面（`add_frames{duration}` / `set_durations{durations}`）与 `inspect` 报的都是**秒**，
+    Aseprite 的 `Frame.duration` 实测也是秒。只比对"写进去的数 == inspect 报回来的数"
+    说明不了任何问题：那两个地方读的是同一个字段，单位搞反时两边会一起错。这里导出
+    GIF 再用 Pillow 读每帧延时，毫秒级地把契约钉死。
+    """
+    from PIL import Image
+
+    env = api.apply(ops=[
+        {"op": "create_sprite", "width": 4, "height": 4},
+        {"op": "add_frames", "count": 2, "duration": 0.25},
+        {"op": "set_durations", "durations": [0.1, 0.2, 0.3]},
+    ])
+    assert env.ok, env.error
+
+    gif = tmp_path / "timing.gif"
+    probe = api.run_lua(
+        session_id=env.session_id,
+        code=f'app.activeSprite:saveCopyAs("{gif.as_posix()}") print("EXPORT gif")',
+        unsafe=True, confirmed=True)
+    assert probe.ok, probe.error
+    assert gif.exists(), "saveCopyAs 没有产出 GIF"
+
+    with Image.open(gif) as anim:
+        assert anim.n_frames == 3
+        delays = []
+        for i in range(anim.n_frames):
+            anim.seek(i)
+            delays.append(anim.info.get("duration"))
+    assert [round(d) for d in delays] == [100, 200, 300], \
+        f"GIF 每帧延时应为 100/200/300ms，实测 {delays}（单位被当成毫秒/秒搞反了）"
+
+    meta, _ = _metrics(api, env.session_id)
+    assert [round(f["duration"], 3) for f in meta["frames"]] == [0.1, 0.2, 0.3]
+
+
+@skip_no_aseprite
 def test_paint_grid_paints_a_lua_grid_from_the_session_work_dir(api):
     """paint_grid：工作目录内的 Lua 网格文件不需要 confirmed=true，直接画出精确像素。"""
     env = api.apply(ops=[

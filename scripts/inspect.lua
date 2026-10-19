@@ -23,6 +23,7 @@ for i, layer in ipairs(sprite.layers) do
 end
 local frames = {}
 for i, frame in ipairs(sprite.frames) do
+    -- Frame.duration 本身就是秒，与 add_frames/set_durations 的入参同一单位，原样报回
     frames[i] = {number = i, duration = frame.duration}
 end
 local palette = {}

@@ -143,8 +143,10 @@ def hood(d, ph):
     else:
         fx = 11 if d == "left" else 18
         ell(fx + 1.5, y + 7, 3.4, 3.8, "X")
-        rect(fx + (0 if d == "left" else 3), y + 7, 2, 2, "R")
+        # 侧视的兜帽后缘暗面：必须先于眼睛画。右视时它和眼睛同列（x=21-22），
+        # 顺序反过来就会把那双红眼整块涂掉（inspect 的 palette 里查不到 #FF3B30）。
         rect(9 if d == "left" else 21, y + 3, 2, 6, "D")
+        rect(fx + (0 if d == "left" else 3), y + 7, 2, 2, "R")
 
 
 def sleeves(d, ph):
@@ -166,24 +168,29 @@ def sleeves(d, ph):
 
 
 def scythe(d, ph):
-    """镰刀整体随持握手平移，只动端点会让柄伸缩。"""
+    """镰刀整体随持握手平移，只动端点会让柄伸缩。
+
+    柄长要收着画：泵动是 ±2px，柄底一旦越过第 28 行，描边就顶到画布最后一行，
+    bbox 底边从 30 跳到 32 —— 那是镰刀在戳地板，不是迈步。收短只动柄底，
+    刃与持握手的位置一点不变。
+    """
     y = ph["bob"]
     s = int(round(ph["swing"] * 2))
     if d == "down":
         # 正/背视：刃朝身体外侧扫出，向内会横过脸把兜帽盖掉
-        x, top = 24, 3 + y - s
-        rect(x, top, 2, 25, "b")
-        rect(x, top, 1, 25, "n")
+        x, top, shaft = 24, 3 + y - s, 23
+        rect(x, top, 2, shaft, "b")
+        rect(x, top, 1, shaft, "n")
         blade(x + 2, top, 1, 5)
     elif d == "up":
-        x, top = 6, 3 + y - s
-        rect(x, top, 2, 25, "n")
-        rect(x + 1, top, 1, 25, "b")
+        x, top, shaft = 6, 3 + y - s, 23
+        rect(x, top, 2, shaft, "n")
+        rect(x + 1, top, 1, shaft, "b")
         blade(x - 1, top, -1, 5)
     else:
-        x, top = (7 if d == "left" else 23), 2 + y - s
-        rect(x, top, 2, 26, "b" if d == "left" else "n")
-        rect(x, top, 1, 26, "n")
+        x, top, shaft = (7 if d == "left" else 23), 2 + y - s, 24
+        rect(x, top, 2, shaft, "b" if d == "left" else "n")
+        rect(x, top, 1, shaft, "n")
         blade(x - 1 if d == "left" else x + 2, top, -1 if d == "left" else 1)
 
 
@@ -215,27 +222,16 @@ def frame_index(d, i):
     return DIRS.index(d) * FRAMES + i + 1
 
 
-def ops_for(grid, frame):
-    ops = []
-    for y in range(H):
-        x = 0
-        while x < W:
-            c = grid[y][x]
-            if c is None:
-                x += 1
-                continue
-            run = 1
-            while x + run < W and grid[y][x + run] == c:
-                run += 1
-            ops.append({"op": "draw_rect", "x": x, "y": y, "width": run, "height": 1,
-                        "color": P[c], "filled": True, "frame": frame})
-            x += run
-    return ops
+def grid_lua(grid, title):
+    """paint_grid 用的 Lua 数据文件（这个 build 的 json.decode 返回 userdata，只能 dofile）。
 
-
-def all_ops():
-    return [o for d in DIRS for i in range(FRAMES)
-            for o in ops_for(build(d, i), frame_index(d, i))]
+    行是字符串，None 写成 '.'（透明、跳过），颜色一律 alpha=255。
+    """
+    used = {c for row in grid for c in row if c}
+    palette = ", ".join(f'{c} = "{P[c]}"' for c in sorted(used))
+    rows = ",\n  ".join('"%s"' % "".join(c or "." for c in row) for row in grid)
+    return (f"-- {title}\nreturn {{\n  palette = {{ {palette} }},\n"
+            f"  rows = {{\n  {rows},\n  }},\n}}\n")
 
 
 def show():

@@ -49,10 +49,13 @@ through ops too. `run_lua` is left doing only what the op surface has no answer 
 > Four overlay terrains (dirt road, sand, water, stone) each get a **complete** 47-tile blob
 > transition matrix — bitmasks in ascending order, and `wilderness_manifest.json` is the import
 > contract — plus interior variants and 24 object tiles, in a 384x608 sheet; water animates over
-> 4 frames. The whole sheet is one atomic batch = a single Aseprite process (8 ops, ~1.05s). The
+> 4 frames. The whole sheet is one atomic batch = a single Aseprite process (8 ops, ~1.07s). The
 > scene is *looked up*, not hand-placed: a blob pass over a terrain map, so a missing tile fails
 > on the spot. Exports are checked pixel-exactly (0 pixels differ) against the design matrices,
 > and same-terrain neighbours must agree on every pixel of the middle of their shared border.
+> Craft is gated too: ramps must shift hue, materials must borrow colours from one another,
+> borders must jitter and the dominant tone must hold - measured against the colours a tile
+> actually puts on the canvas, so a sheet that fails does not ship.
 > `wilderness_preview.png` is a 2x sheet labelled with slot index / block / bitmask per tile.
 
 ---

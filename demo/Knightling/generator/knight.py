@@ -92,13 +92,15 @@ def legs(d, ph):
         v = s * sign                      # -1..1，正=这条腿在前
         front = v > 0.2
         if d in ("down", "up"):
-            x0 = (12 if name == "a" else 17) + int(round(v))
+            # 正视/背视的腿组必须关于画布中心 15.5 对称：11..14 与 16..19
+            x0 = (11 if name == "a" else 16) + int(round(v))
             y0 = 21 - (2 if front else 0)
             rect(x0, y0, 4, 5, "m" if front else "d")
             rect(x0, y0 + 5, 4, 2, "n" if front else "X")
         else:
             back = -1 if d == "left" else 1
-            x0 = 13 + int(round(v * 4)) * back
+            # 侧视同理：左右两向的摆动轴相差 1（13 / 14），否则右向整组腿偏左 1px
+            x0 = (13 if d == "left" else 14) + int(round(v * 4)) * back
             y0 = 21 - (1 if front else 0)
             rect(x0, y0, 5, 5, "m" if front else "d")
             rect(x0, y0 + 5, 5, 2, "n" if front else "X")
@@ -135,7 +137,8 @@ def torso(d, ph):
         x0 = 10 if d == "left" else 11
         rect(x0, y, 11, 9, "m")
         rect(x0, y + 7, 11, 1, "g")
-        chest = 10 if d == "left" else 18
+        # 胸甲高光贴在身体正面：左向 10..12，右向镜像过来是 19..21
+        chest = 10 if d == "left" else 19
         rect(chest, y + 1, 3, 5, "s")
 
 
@@ -150,7 +153,7 @@ def arms(d, ph):
         rect(9, y + s, 2, 6, "d")
         rect(21, y - s, 2, 6, "s")
     else:
-        x = 13 if d == "left" else 15
+        x = 13 if d == "left" else 16
         rect(x, y - s, 3, 6, "s")
         px(x, y - s + 5, "w")
 
@@ -169,9 +172,11 @@ def head(d, ph):
             rect(11, y + 8, 10, 2, "d")
     else:
         ell(16, y + 6, 7.0, 6.2, "m")
-        rect(10 if d == "left" else 12, y + 5, 9, 5, "m")
+        rect(10 if d == "left" else 13, y + 5, 9, 5, "m")
         rect(11 if d == "left" else 17, y + 2, 4, 2, "s")
-        slit = 10 if d == "left" else 20
+        # 观察缝必须留在头盔正脸内：右向 18..21（镜像自左向 10..13），
+        # 原来的 20..23 会被剑刃（x=22,23）盖掉半条缝。
+        slit = 10 if d == "left" else 18
         rect(slit, y + 7, 4, 2, "k")
         rect(9 if d == "left" else 21, y + 4, 2, 3, "d")   # 后脑/面颊护板
 
@@ -185,7 +190,7 @@ def plume(d, ph):
         rect(14 + sw, y + 3, 4, 1, "e")
     else:
         back = -1 if d == "left" else 1
-        x = 15 + sw * back
+        x = (15 if d == "left" else 14) + sw * back
         rect(x, y + 1, 3, 3, "r")
         rect(x + back, y + 3, 3, 2, "r")
         rect(x + 2 * back, y + 4, 2, 2, "e")
@@ -211,7 +216,8 @@ def sword(d, ph):
         x, top, guard = (8 if d == "left" else 22), 4 + y - s, 18 + y - s
         rect(x, top, 2, guard - top, "s")
         rect(x, top, 1, guard - top, "w")
-        rect(x - 1 if d == "left" else x, guard, 4, 1, "g")
+        # 护手以剑刃为中轴向两侧各出 1px（右向曾经只往右出，整把剑看起来偏了）
+        rect(x - 1, guard, 4, 1, "g")
         rect(x, guard + 1, 2, 3, "b")
 
 
@@ -232,27 +238,28 @@ def frame_index(d, i):
     return DIRS.index(d) * FRAMES + i + 1
 
 
-def ops_for(grid, frame):
-    ops = []
-    for y in range(H):
-        x = 0
-        while x < W:
-            c = grid[y][x]
-            if c is None:
-                x += 1
-                continue
-            run = 1
-            while x + run < W and grid[y][x + run] == c:
-                run += 1
-            ops.append({"op": "draw_rect", "x": x, "y": y, "width": run, "height": 1,
-                        "color": P[c], "filled": True, "frame": frame})
-            x += run
-    return ops
+def grid_rows(d, i):
+    """build() 的字符网格 -> paint_grid 的字符串行（'.' 表示透明，跳过不画）。"""
+    return ["".join(c or "." for c in row) for row in build(d, i)]
 
 
-def all_ops():
-    return [o for d in DIRS for i in range(FRAMES)
-            for o in ops_for(build(d, i), frame_index(d, i))]
+def grid_lua(d, i):
+    """paint_grid 吃的 Lua 数据文件内容。
+
+    不是 JSON：这个 build 的 json.decode 返回 userdata，pairs()/# 都用不了，
+    所以网格只能作为 dofile 的 Lua 表文件交给 op。调色板只写这一帧真正用到的键。
+    """
+    rows = grid_rows(d, i)
+    used = sorted({key for row in rows for key in row if key != "."})
+    palette = ", ".join(f'["{key}"] = "{P[key]}"' for key in used)
+    body = ",\n  ".join(f'"{row}"' for row in rows)
+    return (f"-- chibi knight: {d} frame {i + 1} of {FRAMES}\n"
+            f"return {{\n  palette = {{ {palette} }},\n  rows = {{\n  {body},\n  }},\n}}\n")
+
+
+def opaque_count(d, i):
+    """这一帧的不透明像素数：inspect 的 coverage 要按它来核对。"""
+    return sum(1 for row in build(d, i) for c in row if c)
 
 
 def show():

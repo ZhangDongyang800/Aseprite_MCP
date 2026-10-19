@@ -1,22 +1,22 @@
-"""吞噬怪参数化生成器：4 方向 x 5 帧 @ 32x32，黏液软体怪。
+"""吞噬怪设计模型：4 方向 x 5 帧 @ 32x32，黏液软体怪。只产字符网格，不碰 Aseprite。
 
 侧视用"颅骨 + 下颚两块椭圆绕嘴角铰点反向旋转"的模型：张嘴时上颚抬起、
 下颚落下，中间的楔形就是口腔。这样嘴是咬穿轮廓的缺口，而不是体内的一个洞。
 几何只产出语义 mask，明暗与描边在渲染阶段统一算，所以 right 只是 left 的
-mask 水平镜像，光照仍固定在左上。
+mask 水平镜像，光照仍固定在左上（因此把 left 整帧水平镜像过去会得到约 50 个
+明暗像素的差，produce.py 的质检正是按"mask 镜像 + 光照固定"来断言的）。
 
-  python monster.py            # 打印 20 帧 ASCII
-  python monster.py --emit     # 生成 monster_ops.json
+  python monster.py      # 打印 20 帧 ASCII，调形用
+  落盘与质检见 produce.py（每帧一个 paint_grid 吃 grid_lua() 产出的数据文件）。
 """
 
-import json
 import math
-import sys
-from pathlib import Path
 
 W = H = 32
 DIRS = ["down", "left", "right", "up"]
 PHASES = ["idle", "windup", "lunge", "chomp", "swallow"]
+# 帧时长随相位变化（秒）：慢呼吸的待机 -> 蓄力 -> 一瞬的突进 -> 咬合 -> 吞咽停顿
+PHASE_DUR = [0.2, 0.1, 0.08, 0.09, 0.22]
 
 PALETTE = {
     "H": "#9BE564",  # 受光
@@ -25,7 +25,7 @@ PALETTE = {
     "X": "#1F4D14",  # 描边
     "P": "#43152C",  # 口腔深处
     "Q": "#8E2F52",  # 舌
-    "T": "#F4F7E4",  # 牙
+    "T": "#E7EEDA",  # 牙（冷象牙白：与眼神光 W 至少差一个通道 >8，否则 inspect 判近重复色）
     "t": "#BFC4A6",  # 牙尖暗部
     "E": "#101A0B",  # 眼
     "W": "#F6FFE8",  # 眼神光
@@ -107,7 +107,7 @@ SIDE_CFG = {
             jaw=(15, 20.5, 10.2, 8.0)),
     1: dict(u=9, d=6, gape=2.4, lean=(2, 1), pivot=(23, 16), skull=(16, 12.5, 10.0, 6.6),
             jaw=(15, 21, 10.8, 7.6)),
-    2: dict(u=17, d=12, gape=6.0, lean=(-3, -1), pivot=(23, 16), skull=(16, 11.5, 9.6, 7.0),
+    2: dict(u=17, d=12, gape=6.0, lean=(-3, 0), pivot=(23, 16), skull=(16, 11.5, 9.6, 7.0),
             jaw=(15, 20.5, 10.0, 8.2)),
     3: dict(u=5, d=4, gape=1.2, lean=(-1, 1), pivot=(23, 16), skull=(16, 12.5, 9.8, 6.8),
             jaw=(15, 21, 10.6, 7.6)),
@@ -174,8 +174,10 @@ def back_masks(phase):
     cfg = FRONT_CFG[phase]
     hx, hy, hrx, hry = cfg["head"]
     bx, by, brx, bry = cfg["body"]
-    wide = 1.0 + 0.055 * cfg["mx"] if phase in (1, 2, 3) else 1.0
-    hrx *= wide
+    # 从背后看，张开的下颌会在头部两侧顶出一点轮廓；但同一相位的剪影宽度必须
+    # 与正视自洽（inspect 的 bbox 会盯这个），所以最宽只比正视颅骨宽 1px 半径。
+    back_hrx = hrx * (1.0 + 0.055 * cfg["mx"]) if phase in (1, 2, 3) else hrx
+    hrx = min(back_hrx, hrx + 1.0)
     body = blob(hx, hy, hrx, hry) | blob(bx, by, brx, bry)
     top = int(hy - hry) + 2
     bot = int(by + bry) - 3
@@ -312,30 +314,21 @@ def frame_index(direction, phase):
     return DIRS.index(direction) * len(PHASES) + phase + 1  # 1-based
 
 
-def ops_for(grid, frame):
-    ops = []
-    for y in range(H):
-        x = 0
-        while x < W:
-            c = grid[y][x]
-            if c == ".":
-                x += 1
-                continue
-            run = 1
-            while x + run < W and grid[y][x + run] == c:
-                run += 1
-            ops.append({"op": "draw_rect", "x": x, "y": y, "width": run, "height": 1,
-                        "color": PALETTE[c], "filled": True, "frame": frame})
-            x += run
-    return ops
+def frame_durations():
+    """20 帧的逐帧时长（秒），按方向重复五个相位。"""
+    return PHASE_DUR * len(DIRS)
 
 
-def all_ops():
-    ops = []
-    for d in DIRS:
-        for p in range(len(PHASES)):
-            ops += ops_for(build(d, p), frame_index(d, p))
-    return ops
+def grid_lua(matrix, title):
+    """paint_grid 用的 Lua 数据文件（本机 json.decode 返回 userdata，只能 dofile）。
+
+    '.' 是透明跳过，其余字符查 PALETTE；palette 只带这一帧真正用到的颜色。
+    """
+    used = {code for row in matrix for code in row if code != "."}
+    palette = ", ".join(f'{code} = "{PALETTE[code]}"' for code in sorted(used))
+    rows = ",\n  ".join('"%s"' % "".join(row) for row in matrix)
+    return (f"-- {title}\nreturn {{\n  palette = {{ {palette} }},\n"
+            f"  rows = {{\n  {rows},\n  }},\n}}\n")
 
 
 def show():
@@ -347,9 +340,4 @@ def show():
 
 
 if __name__ == "__main__":
-    if "--emit" in sys.argv:
-        Path(__file__).with_name("monster_ops.json").write_text(
-            json.dumps(all_ops(), ensure_ascii=False), encoding="utf-8")
-        print("ops:", len(all_ops()))
-    else:
-        show()
+    show()

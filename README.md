@@ -21,10 +21,9 @@ A Model Context Protocol (MCP) server that enables AI to create pixel art in Ase
 
 ##  Demo
 
-All three characters were drawn by an AI through this MCP — every pixel written by
-`apply_operations`. The structural work (adding frames, setting durations, building tags,
-exporting the sheet) had to go through `run_lua` when these were made; three of those four now
-have ops of their own — `add_frames`, `set_durations`, `add_tag`.
+All four demos were drawn by an AI through this MCP — every pixel written by `apply_operations`'s
+`paint_grid`, and the structural work (adding frames, setting durations, building tags) goes
+through ops too. `run_lua` is left doing only what the op surface has no answer for: exporting.
 
 | Character | ↓ Down | ↑ Up | ← Left | → Right | Sprite Sheet |
 |:--|:--:|:--:|:--:|:--:|:--:|
@@ -36,19 +35,25 @@ have ops of their own — `add_frames`, `set_durations`, `add_tag`.
 > legs, so the walk reads through a travelling wave in the robe hem plus alternating bone feet).
 > The third is an **action animation**: idle → crouch → lunge with open maw → chomp → swallow,
 > with per-phase frame durations.
-> Each character ships a re-runnable parametric generator and a per-frame pixel check under
-> `demo/<name>/generator/`.
+> All three are pixel-exact against their design matrices, and `inspect`'s `isolated_pixels` /
+> `near_duplicate_colors` / `bbox` act as a per-frame gate (no stray pixels, mirrored directions
+> carry equal volume, the foot baseline does not drift).
+> Each character ships a re-runnable parametric generator under `demo/<name>/generator/`.
 
 ### Terrain tileset
 
 | Tileset sheet | Composed scene | Water loop |
 |:--:|:--:|:--:|
-| **Chibi Grassland**<br>32 tiles · 32px · 8x4 | ![](demo/grassland_q/grassland_q_scene.png) | ![](demo/grassland_q/grassland_q_water.gif) |
+| **Wilderness 47-blob**<br>228 slots · 32px · 12x19 | ![](demo/wilderness_47/wilderness_scene.png) | ![](demo/wilderness_47/wilderness_water.gif) |
 
-> 32 tiles of 32x32 in an 8x4 sheet (256x128), including dedicated transition and corner tiles
-> for path, water and wheat; the water animates over 4 frames. The whole sheet is one atomic
-> batch = a single Aseprite process (~0.45s), drawn through `paint_grid`, and the exports are
-> checked pixel-exactly (0 pixels differ) against the design matrices.
+> Four overlay terrains (dirt road, sand, water, stone) each get a **complete** 47-tile blob
+> transition matrix — bitmasks in ascending order, and `wilderness_manifest.json` is the import
+> contract — plus interior variants and 24 object tiles, in a 384x608 sheet; water animates over
+> 4 frames. The whole sheet is one atomic batch = a single Aseprite process (8 ops, ~1.05s). The
+> scene is *looked up*, not hand-placed: a blob pass over a terrain map, so a missing tile fails
+> on the spot. Exports are checked pixel-exactly (0 pixels differ) against the design matrices,
+> and same-terrain neighbours must agree on every pixel of the middle of their shared border.
+> `wilderness_preview.png` is a 2x sheet labelled with slot index / block / bitmask per tile.
 
 ---
 

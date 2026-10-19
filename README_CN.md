@@ -21,9 +21,9 @@
 
 ##  示例演示
 
-三个角色都是 AI 通过本 MCP 现场绘制的像素素材：像素全部由 `apply_operations` 写入。
-结构工作（加帧、设时长、建 tag、导出精灵表）在这几张图制作时只能走 `run_lua`，
-如今前三样已经有 `add_frames` / `set_durations` / `add_tag` 三个 op 覆盖。
+四个 demo 都是 AI 通过本 MCP 现场绘制的像素素材：像素全部由 `apply_operations` 的
+`paint_grid` 写入，帧结构（加帧、设时长、建 tag）也全部走 op 面；`run_lua` 只留给导出，
+因为工具面没有 export op。
 
 | 角色 | ↓ 下 | ↑ 上 | ← 左 | → 右 | 精灵表 |
 |:--|:--:|:--:|:--:|:--:|:--:|
@@ -33,17 +33,22 @@
 
 > 前两个是**行走循环**（骑士靠腿部反相摆动，死神没有腿、靠袍摆行波与骨脚读出迈步）；
 > 第三个是**动作帧动画**：待机 → 蓄力 → 张口突进 → 咬合 → 吞咽，帧时长按相位变化。
-> 每个角色的 `demo/<name>/generator/` 下都有可重跑的参数化生成器与逐帧像素校验脚本。
+> 三张都做到逐帧与设计矩阵**像素级 0 差异**，并用 `inspect` 的 `isolated_pixels` /
+> `near_duplicate_colors` / `bbox` 当逐帧质检门禁（孤立像素为 0、左右体积对称、脚底基线不漂）。
+> 每个角色的 `demo/<name>/generator/` 下都有可重跑的参数化生成器。
 
 ### 地形 tileset
 
 | tileset 图集 | 拼装场景 | 水面循环 |
 |:--:|:--:|:--:|
-| **Q 版草原**<br>32 张 32px · 8x4 | ![](demo/grassland_q/grassland_q_scene.png) | ![](demo/grassland_q/grassland_q_water.gif) |
+| **荒野 47-blob**<br>228 槽 · 32px · 12x19 | ![](demo/wilderness_47/wilderness_scene.png) | ![](demo/wilderness_47/wilderness_water.gif) |
 
-> 32 张 32x32 瓦片排成 8x4 图集（256x128），含路径 / 水域 / 麦田各自的过渡砖与转角砖；
-> 水面 4 帧循环。整张图集是一个原子批量 = 一次 Aseprite 进程（约 0.45s），
-> 网格文件经 `paint_grid` 写入，导出后与设计矩阵**逐像素校验**（0 像素差）。
+> 土路 / 沙 / 水 / 石板四种叠加地形各一套**完整**的 47 块 blob 过渡矩阵（位掩码升序排列，
+> `wilderness_manifest.json` 就是导入契约），加 interior 变体与 24 格物件，排成 384x608 图集；
+> 水面 4 帧循环。整张图集是一个原子批量 = 一次 Aseprite 进程（8 个 op，约 1.05s），
+> 场景由 blob 查表自动铺开（图集里缺哪块砖会当场暴露），导出后与设计矩阵逐像素校验
+> （0 像素差），并校验同地形相邻两砖共享边界中段的覆盖完全连续。
+> `wilderness_preview.png` 是每格标注了「槽位号 / 块名 / 位掩码」的 2x 预览图。
 
 ---
 

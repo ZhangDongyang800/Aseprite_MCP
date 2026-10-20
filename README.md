@@ -19,6 +19,32 @@ A Model Context Protocol (MCP) server that enables AI to create pixel art in Ase
 
 <br>
 
+##  Install in 30 seconds
+
+Two prerequisites: **Aseprite v1.3+ installed** (note the full path to its executable), and
+**uv** (Windows `winget install astral-sh.uv`, macOS `brew install uv`, or
+`curl -LsSf https://astral.sh/uv/install.sh | sh`). There is **no pip step and no virtualenv
+to create** - `uv run` builds an isolated environment from `pyproject.toml` and installs
+`fastmcp` / `pillow` / `websockets` for you.
+
+```bash
+git clone https://github.com/ZhangDongyang800/Aseprite_MCP.git
+cd Aseprite_MCP
+uv run -q python -c "import json, os; print(json.dumps({'mcpServers': {'aseprite': {'command': 'uv', 'args': ['run', '--directory', os.getcwd(), 'server.py'], 'env': {'ASEPRITE_PATH': 'C:/Program Files/Aseprite/aseprite.exe'}}}}, indent=2))"
+```
+
+That last command **prints the config ready to paste into your client**: your clone path is
+already filled in, and Windows backslashes are already escaped the way JSON requires - hand
+copying `C:\path\to\...` and missing the escaping is the most common way this fails to start.
+Point `ASEPRITE_PATH` at your own Aseprite; when auto-detection finds it, the whole `env`
+block can go. TRAE, Claude Desktop, Cursor and Qoder all take the same config.
+
+To check it worked, tell the client: *"create a new 8x8 canvas, flood it red, then inspect it"*.
+A fully red square plus `coverage 1.0` means you are live (that is the measured result).
+
+Live mode (watch the AI paint inside Aseprite), the work directory and the known traps are
+covered in the *How to use* section below.
+
 ##  Demo
 
 All four demos were drawn by an AI through this MCP — every pixel written by `apply_operations`'s
@@ -72,6 +98,7 @@ through ops too. `run_lua` is left doing only what the op surface has no answer 
 
 ##  Table of Contents
 
+- [ Install in 30 seconds](#-install-in-30-seconds)
 - [ Demo](#-demo)
 - [Tools](#tools)
 - [ How to Use](#-how-to-use)
@@ -122,19 +149,11 @@ All drawing ops accept `layer` / `frame` (1-based, default 1/1). A batch runs in
 
 Install uv with `winget install astral-sh.uv` (Windows), `brew install uv` (macOS), or `curl -LsSf https://astral.sh/uv/install.sh | sh`.
 
-### 2. Clone
+### 2. Client Configuration
 
-```bash
-git clone https://github.com/ZhangDongyang800/Aseprite_MCP.git
-```
-
-There is no install step: the `uv run` command in step 3 provisions an isolated environment from `pyproject.toml` on first launch, with `fastmcp` / `pillow` / `websockets`.
-
-### 3. Client Configuration
-
-Replace `C:\path\to\Aseprite_MCP` with where you cloned this repo, and the two `env` paths with your own.
-
-**JSON config** (TRAE, Claude Desktop, Cursor, Qoder, …):
+Install and a ready-to-paste config come from [Install in 30 seconds](#-install-in-30-seconds):
+after cloning, that `uv run -q python -c ...` line prints this block with your own paths already
+filled in and escaped. By hand it looks like:
 
 ```json
 {
@@ -150,6 +169,12 @@ Replace `C:\path\to\Aseprite_MCP` with where you cloned this repo, and the two `
   }
 }
 ```
+
+`ASEPRITE_WORK_DIR` is optional (it defaults to the repo's own `work/`). **An ASCII-only path
+is advisable, not required**: current Aseprite builds (1.3.17, verified) load scripts from
+non-ASCII paths fine, but older builds and some console code pages fail there with a
+"can't load … (lua)" error that looks exactly like a build without the Lua engine. The server
+prints a note at startup when the path is non-ASCII.
 
 If the client cannot find `uv`, give `command` the absolute path to `uv`. Never fall back to a bare `python` — Windows shadows it with a Store alias — or to `pip install --user`, because hosts strip `APPDATA` and Python then cannot find the packages. To skip uv entirely, install into a virtualenv and point `command` at that interpreter:
 

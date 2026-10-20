@@ -19,6 +19,29 @@
 
 <br>
 
+##  30 秒装上
+
+前提只有两个：**装好 Aseprite v1.3+**（记下它的 exe 完整路径），以及 **uv**
+（Windows `winget install astral-sh.uv`，macOS `brew install uv`，或
+`curl -LsSf https://astral.sh/uv/install.sh | sh`）。**没有 pip 步骤，也不用自己建虚拟环境**
+—— `uv run` 会按 `pyproject.toml` 建好独立环境并装齐 `fastmcp` / `pillow` / `websockets`。
+
+```bash
+git clone https://github.com/ZhangDongyang800/Aseprite_MCP.git
+cd Aseprite_MCP
+uv run -q python -c "import json, os; print(json.dumps({'mcpServers': {'aseprite': {'command': 'uv', 'args': ['run', '--directory', os.getcwd(), 'server.py'], 'env': {'ASEPRITE_PATH': 'C:/Program Files/Aseprite/aseprite.exe'}}}}, indent=2))"
+```
+
+最后一条命令**直接吐出可以粘进客户端的配置**：克隆路径已经填好，Windows 路径的反斜杠也
+已经按 JSON 规则转义好了 —— 手抄 `C:\path\to\...` 再漏掉转义是这个项目最常见的装不上原因。
+把 `ASEPRITE_PATH` 换成你自己的 Aseprite 路径；自动探测能找到它时，整个 `env` 可以删掉。
+TRAE、Claude Desktop、Cursor、Qoder 用的是同一份配置。
+
+装上之后验证一下：对客户端说「新建一张 8x8 画布，全部填成红色，然后 inspect 给我看」。
+看到一张全红方块和 `coverage 1.0` 就是通了（实测值）。
+
+实时模式（看 AI 在 Aseprite 里当场画）、工作目录、常见坑见下面《如何使用》一节。
+
 ##  示例演示
 
 四个 demo 都是 AI 通过本 MCP 现场绘制的像素素材：像素全部由 `apply_operations` 的
@@ -66,6 +89,7 @@
 
 ##  目录
 
+- [ 30 秒装上](#-30-秒装上)
 - [ 示例演示](#-示例演示)
 - [工具](#工具)
 - [ 如何使用](#-如何使用)
@@ -116,19 +140,10 @@ apply_operations(ops=[
 
 安装 uv：Windows `winget install astral-sh.uv`，macOS `brew install uv`，或 `curl -LsSf https://astral.sh/uv/install.sh | sh`。
 
-### 2. 克隆
+### 2. 客户端配置
 
-```bash
-git clone https://github.com/ZhangDongyang800/Aseprite_MCP.git
-```
-
-没有安装步骤：第 3 节的 `uv run` 会在首次启动时按 `pyproject.toml` 自动建好独立环境并装齐 `fastmcp` / `pillow` / `websockets`。
-
-### 3. 客户端配置
-
-把 `C:\path\to\Aseprite_MCP` 换成你的克隆位置，两个 `env` 路径换成你自己的。
-
-**JSON 配置**（TRAE、Claude Desktop、Cursor、Qoder 等）：
+安装与配置命令见顶部 [30 秒装上](#-30-秒装上) —— clone 之后那条 `uv run -q python -c ...`
+会直接打印填好你本地路径的配置。手写也行，形如：
 
 ```json
 {
@@ -144,6 +159,10 @@ git clone https://github.com/ZhangDongyang800/Aseprite_MCP.git
   }
 }
 ```
+
+`ASEPRITE_WORK_DIR` 可以省略（默认落在仓库自己的 `work/`）。**建议指到纯 ASCII 路径**：
+较新的 Aseprite（1.3.17 实测）能正常读非 ASCII 路径，但老 build 和一些控制台代码页会在
+这种路径上报"无法加载 …（lua）"，看起来像没编 Lua 引擎 —— 服务器启动时会就此打一行提示。
 
 客户端找不到 `uv` 时，把 `command` 写成 `uv` 的绝对路径。不要退回裸 `python`（Windows 上它被 Microsoft Store 的别名桩截获），也不要 `pip install --user`（宿主会剥掉 `APPDATA`，Python 就看不见包装到哪了）。不想用 uv，就装进虚拟环境、把 `command` 指向那个解释器：
 

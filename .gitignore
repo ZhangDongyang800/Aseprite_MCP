@@ -1,68 +1,68 @@
 
-# Python 缓存文件
+# Python cache
 __pycache__/
 *.py[cod]
 *$py.class
 *.so
 
-# 虚拟环境
+# Virtual environments
 venv/
 env/
 ENV/
 .venv/
 
-# 分发 / 打包
+# Distribution / packaging
 build/
 dist/
 *.egg-info/
 .eggs/
 
-# 测试相关
+# Test artifacts
 .pytest_cache/
 .coverage
 htmlcov/
 .tox/
 .nox/
 
-# IDE / 编辑器配置
+# IDE / editor settings
 .vscode/
 .idea/
 *.swp
 *.swo
 *~
 
-# 操作系统生成文件
+# OS-generated files
 .DS_Store
 Thumbs.db
 
-# 日志文件
+# Logs
 .uploads/
-# docs 目录只作为本地工作文档，不纳入版本控制
+# docs/ holds local working notes only; it is never published
 docs/
 *.log
 
-# 本地环境变量文件
+# Local environment files
 .env
 .env.local
 
 
-# Aseprite 源文件
+# Aseprite documents
 *.ase
 *.aseprite
 
-# 临时导出文件
+# Temporary exports
 # *.gif
 # *.png
 # *.jpg
 
-# demo 生成器的中间产物
+# Demo generator intermediates
 .build/
 
-# 会话临时产物（demo 草稿、预览图、评审 diff）
+# Session scratch (demo drafts, previews, review diffs)
 .superpowers/
 
-# 本地评审/调试脚本与中间输出
+# Local review/debug scripts and their output
 .reviews/
 
-# 服务器会话状态目录（ASEPRITE_WORK_DIR 的默认值）
+# Server session state (the default for ASEPRITE_WORK_DIR)
 /work/

@@ -1,69 +1,86 @@
-# slime_devourer 生成器
+# slime_devourer generator
 
-32x32、4 方向 x 5 帧的"黏液吞噬怪"动作动画（待机 → 蓄力下压 → 张口突进 → 咬合 → 吞咽鼓包），
-不是手画的：`monster.py` 用两块椭圆（颅骨 + 下颚绕嘴角铰点反向旋转）参数化产出字符网格，
-`produce.py` 把它落到 Aseprite 并做质检。
+A 32x32 action animation of the "slime devourer", 4 directions x 5 frames (idle → windup crouch → lunge
+with open maw → chomp → swallow bulge), not hand-drawn: `monster.py` generates the character grids
+parametrically from two ellipses (a cranium plus a lower jaw rotating in the opposite direction around a
+hinge at the mouth corner), and `produce.py` lands them in Aseprite and runs QA.
 
 ```bash
-export ASEPRITE_PATH=/path/to/aseprite.exe   # 不设则依赖自动检测
-python demo/slime_devourer/generator/produce.py             # 唯一入口：建会话 -> 一批 op -> inspect 质检 -> 逐像素校验 -> 打包
-python demo/slime_devourer/generator/produce.py --preview   # 只出本地接触表 .build/sheet_preview.png，不启动 Aseprite
-python demo/slime_devourer/generator/monster.py             # 打印 20 帧 ASCII，调形用
+export ASEPRITE_PATH=/path/to/aseprite.exe   # falls back to auto-detection if unset
+python demo/slime_devourer/generator/produce.py             # the only entry point: create session -> one batch of ops -> inspect QA -> per-pixel verification -> package
+python demo/slime_devourer/generator/produce.py --preview   # only writes the local contact sheet .build/sheet_preview.png, without launching Aseprite
+python demo/slime_devourer/generator/monster.py             # prints 20 frames of ASCII, for tuning the shape
 ```
 
-中间产物都在 `.build/`（已 gitignore）：`monster.ase`、`monster_sheet.png`、`monster_data.json`、
-`frames/frame_1..20.png`、`sheet_preview.png`；会话状态在 `.build/work/`。
-交付物在上级目录：四条方向 GIF、`slime_devourer_spritesheet.png`、`slime_devourer_devour.ase`。
+Intermediate files all live in `.build/` (gitignored): `monster.ase`, `monster_sheet.png`,
+`monster_data.json`, `frames/frame_1..20.png`, `sheet_preview.png`; session state lives in `.build/work/`.
+Deliverables sit in the parent directory: the four directional GIFs, `slime_devourer_spritesheet.png`,
+`slime_devourer_devour.ase`.
 
-## 职责边界
+## Division of responsibilities
 
-- **一个 `apply_operations` 原子批量画完整只怪**（27 个 op = 一次 Aseprite 进程）：
-  `add_frames`(补到 20 帧) → 20 个 `paint_grid`（每帧一个）→ `set_durations`（逐帧五个不同时长）
-  → 4 个 `add_tag`（`devour_down/left/right/up`）→ `save_sprite`。
-  首帧由单独的 `create_sprite` 建出来拿 `session_id`，因为网格文件要写进会话目录。
-- **网格文件写进 `<.build>/work/sessions/<session_id>/monster_NN.lua`**（在工作目录内，
-  所以 `paint_grid` 免 `confirmed=true`）。内容是 Lua 表文件而非 JSON：本机构建的
-  `json.decode` 返回 userdata，`pairs()`/`#` 都走不通，只能 `dofile`。
-- **`inspect` 读回结构与指标**（`frame` 参数选帧；只读，永不改动文档）。
-- **`run_lua` 只留导出**：精灵表 `app.command.ExportSpriteSheet` + 逐帧 PNG。逐帧 PNG 要先把
-  每帧拷成一个临时单帧文档再 `saveCopyAs`——多帧文档上直接 `saveCopyAs("x.png")` 会写成
-  `x1.png..xN.png`，拿不到确切文件名。
+- **One atomic `apply_operations` batch draws the whole monster** (27 ops = one Aseprite process):
+  `add_frames` (extend to 20 frames) → 20 `paint_grid` (one per frame) → `set_durations` (five different
+  per-frame durations) → 4 `add_tag` (`devour_down/left/right/up`) → `save_sprite`. The document is created
+  by a separate `create_sprite` call to obtain the `session_id`, because the grid files must be written
+  into the session directory.
+- **Grid files are written into `<.build>/work/sessions/<session_id>/monster_NN.lua`** (inside the work
+  directory, so `paint_grid` is exempt from `confirmed=true`). The content is a Lua table file rather than
+  JSON: on this machine `json.decode` returns userdata, and neither `pairs()` nor `#` works on it, so
+  `dofile` is the only route.
+- **`inspect` reads back structure and metrics** (the `frame` parameter picks the frame; read-only, never
+  modifies the document).
+- **`run_lua` is left with only exports**: the sprite sheet via `app.command.ExportSpriteSheet` plus
+  per-frame PNGs. Per-frame PNGs require copying each frame into a temporary single-frame document before
+  `saveCopyAs` — calling `saveCopyAs("x.png")` directly on a multi-frame document writes `x1.png..xN.png`,
+  and the exact filenames are not obtainable.
 
-早期版本在这里写了两条不成立的前提，已删：
+An earlier version of this file listed two premises that do not hold; they have been removed:
 
-- ~~「op 注册表不能扩帧，`frame=2` 会报 frame index out of bounds，动画结构必须走逃逸舱」~~
-  `add_frames` / `set_durations` / `add_tag` 三个结构 op 早就在注册表里；手写搭帧的 Lua 已删。
-- ~~「inspect 对多帧文档会抛 FileNotFoundError，所以只能用 run_lua 探结构」~~
-  `scripts/inspect.lua` 现在会先把临时副本压成单帧再导出 PNG，多帧文档可以正常 inspect。
+- ~~"the op registry cannot add frames, `frame=2` reports frame index out of bounds, and animation
+  structure must go through the escape hatch"~~ the three structural ops `add_frames` /
+  `set_durations` / `add_tag` have long been in the registry; the hand-written frame-building Lua is gone.
+- ~~"inspect throws FileNotFoundError on multi-frame documents, so structure can only be probed with
+  run_lua"~~ `scripts/inspect.lua` now collapses its temporary copy to a single frame before exporting
+  the PNG, so multi-frame documents inspect fine.
 
-像素侧同样不再走 `draw_rect`：旧版每方向一批、4 批共 3248 个 op（本机 310/310/306/327ms，
-合计 1253ms，外加一次建结构的 `run_lua`），现在 27 个 op 一个原子批量，本机 340~420ms
-（会话冷启动的那一次是 632ms）。
+The pixel side no longer goes through `draw_rect` either: the old version ran one batch per direction,
+3248 ops across 4 batches (310/310/306/327ms on this machine, 1253ms in total, plus one structural
+`run_lua`); now 27 ops run as one atomic batch, taking 340~420ms on this machine (632ms for the run that
+cold-starts a session).
 
-## 造型模型
+## Shape model
 
-侧视的嘴是"咬穿轮廓的缺口"而不是体内的一个洞：上颚抬起、下颚落下，中间楔形即口腔。
-几何只产出语义 mask，明暗与描边在渲染阶段统一计算，所以 `right` 是 `left` 的 mask 水平镜像，
-而光照仍固定左上——把 `left` 整帧镜像过去会差 42~68 个明暗像素，那正是光照没跟着翻的结果，
-不是缺陷。改造型只需要动 `SIDE_CFG` / `FRONT_CFG` 与 mask 构造函数，重跑 `produce.py`。
+In the side view the mouth is "a notch bitten through the silhouette", not a hole inside the body: the
+upper jaw lifts and the lower jaw drops, and the wedge between them is the oral cavity. The geometry emits
+semantic masks only; shading and outlines are computed uniformly in the render stage, so `right` is the
+horizontal mirror of `left`'s mask while the light stays fixed top-left — mirroring the whole `left` frame
+over would differ by 42~68 shading pixels, which is exactly what happens when the light does not flip with
+it, not a defect. Reshaping only needs edits to `SIDE_CFG` / `FRONT_CFG` and the mask constructors, then a
+rerun of `produce.py`.
 
-## 质检（`produce.py` 的 `qa()`，读的是 inspect 回读的 metrics）
+## QA (`qa()` in `produce.py`, reading the metrics that inspect hands back)
 
-全绿才允许打包，任何一条不满足就 `SystemExit(1)` 并列出缺陷：
+Packaging only happens when everything is green; any failing check raises `SystemExit(1)` and lists the
+defects:
 
-- `isolated_pixels` 20 帧全为 0（黏液怪身上孤立像素 = 脏点）。当前造型本来就没有孤点，
-  这条是回归闸门：以后调形把描边画断，这里直接失败。
-- `near_duplicate_colors` 由 6 帧报 `#F4F7E4`(牙) vs `#F6FFE8`(眼神光)（三通道差 2/7/4，全在
-  阈值 8 内）收敛到 0：牙改成 `#E7EEDA`，与眼神光差 R15/G16，仍留在同一支冷色里，
-  高亮层级（眼神光最亮）不变。
-- `semi_transparent_pixels` 0（`paint_grid` 一律 alpha=255，GIF 的 1-bit 透明不会被半像素糊住）。
-- **bbox 不许贴画布边**：`left`/`right` 的突进帧（8/13）颅顶描边原来压在画布第 0 行，等于被
-  画布切掉；把 `SIDE_CFG[2].lean` 从 `(-3,-1)` 改成 `(-3,0)`（整帧下移 1px，形状不动），
-  现在四周一律留有 1px 余量。
-- **体积曲线**（bbox 尺寸 / coverage）：蓄力压扁、突进拉长最满、咬合收缩、吞咽把轮廓顶高，
-  `produce.py` 会打表：
+- `isolated_pixels` is 0 on all 20 frames (an isolated pixel on the slime = a dirty dot). The current shape
+  has no isolated dots anyway; this is a regression gate: if a future reshape breaks the outline, this
+  fails outright.
+- `near_duplicate_colors` went from 6 frames reporting `#F4F7E4` (teeth) vs `#F6FFE8` (eye glint) (channel
+  differences 2/7/4, all within the threshold of 8) down to 0: the teeth became `#E7EEDA`, R15/G16 away
+  from the glint, still in the same cool branch, and the highlight hierarchy (the glint stays brightest)
+  is unchanged.
+- `semi_transparent_pixels` 0 (`paint_grid` always uses alpha=255, so GIF's 1-bit transparency never gets
+  smeared by half-transparent pixels).
+- **The bbox must not touch the canvas edge**: the lunge frames of `left`/`right` (8/13) used to have the
+  crown outline pressed against row 0, effectively cut off by the canvas; changing `SIDE_CFG[2].lean` from
+  `(-3,-1)` to `(-3,0)` (shifting the whole frame down 1px, shape unchanged) now leaves a 1px margin on
+  all sides.
+- **Volume curve** (bbox size / coverage): the windup squashes, the lunge stretches longest and fullest,
+  the chomp contracts, and the swallow pushes the silhouette up; `produce.py` prints a table:
 
-  | 相位 | down(正) | left | right | up(背) |
+  | Phase | down (front) | left | right | up (back) |
   |---|---|---|---|---|
   | idle | 22x26/0.479 | 23x27/0.504 | 23x27/0.504 | 22x26/0.479 |
   | windup | 24x24/0.479 | 24x26/0.522 | 24x26/0.522 | 24x24/0.496 |
@@ -71,15 +88,19 @@ python demo/slime_devourer/generator/monster.py             # 打印 20 帧 ASCI
   | chomp | 24x25/0.488 | 23x26/0.510 | 23x26/0.510 | 24x25/0.506 |
   | swallow | 22x28/0.496 | 22x28/0.522 | 22x28/0.522 | 22x28/0.496 |
 
-  背视原来越张口越宽（`wide = 1 + 0.055 * mx` 不设上限，突进时颅骨半径 8.8→12.0，剪影 26 宽
-  对正视图的 22 宽，同一瞬间胖了一号），现在给它封顶到"最多比正视颅骨宽 1px 半径"，
-  正/背剪影在每个相位完全一致，方向切换不再突然换体型。
-- **方向自洽**：`right` 的 alpha mask 必须等于 `left` 的水平镜像，bbox 尺寸相同、
-  x 满足 `x_left + x_right + width == 32`。
-- **帧时长逐帧不同**：五个相位 `[0.2, 0.1, 0.08, 0.09, 0.22]` 秒（本机 `Frame.duration` 按秒
-  解释）两两不同，`set_durations` 一次写满 20 帧，inspect 回读逐帧比对（±5ms）。
-  打包时再断言 GIF 里确实是 `[200, 100, 80, 90, 220]` 且 5 帧没被编码器合并
-  （五帧两两不同，`n_frames == 5` 是这条约定的探针）。
+  The back view used to get wider the more the mouth opened (`wide = 1 + 0.055 * mx` with no cap: during
+  the lunge the cranium radius went 8.8→12.0 and the silhouette came out 26 wide against 22 in the front
+  view — one size fatter at the same instant). It is now capped at "at most 1px more cranium radius than
+  the front view", so the front/back silhouettes match exactly at every phase, and switching direction no
+  longer suddenly changes body size.
+- **Directional consistency**: `right`'s alpha mask must equal the horizontal mirror of `left`'s, the bbox
+  sizes must match, and x must satisfy `x_left + x_right + width == 32`.
+- **Frame durations differ per frame**: the five phases `[0.2, 0.1, 0.08, 0.09, 0.22]` seconds (on this
+  machine `Frame.duration` is interpreted in seconds) are pairwise different; `set_durations` writes all 20 frames in
+  one go, and inspect reads them back for a frame-by-frame comparison (±5ms). At packaging time there are
+  further assertions that the GIF really carries `[200, 100, 80, 90, 220]` and that the encoder did not
+  merge the 5 frames (the five are pairwise different; `n_frames == 5` is the probe for this contract).
 
-校验之外还有一条硬闸门：`verify()` 把每帧导出的 PNG 与 `monster.py` 的设计矩阵逐像素比对，
-20 帧必须全 0 差；不为 0 就打印差异像素并不打包。
+Beyond the checks there is one hard gate: `verify()` compares each exported frame PNG against
+`monster.py`'s design matrix pixel by pixel; all 20 frames must have 0 differences, and if it is not 0 it
+prints the differing pixels and skips packaging.

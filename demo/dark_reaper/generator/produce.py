@@ -1,16 +1,21 @@
-"""暗黑死神 产出脚本：建会话 -> 一个原子批量画完 24 帧 -> 逐帧质检 -> 逐像素校验 -> 打包。
+"""Dark reaper build script: create session -> draw all 24 frames in one atomic
+batch -> per-frame QC -> per-pixel verification -> package.
 
-用法（在仓库任意位置）：python demo/dark_reaper/generator/produce.py
-需要 ASEPRITE_PATH 指向可执行的 Aseprite（否则依赖自动检测）。
+Usage (from anywhere in the repo): python demo/dark_reaper/generator/produce.py
+ASEPRITE_PATH must point at a runnable Aseprite (otherwise auto-detection is used).
 
-流程刻意只用 v2 工具面：
-- `create_sprite` / `add_frames` / 24x `paint_grid` / `set_durations` / 4x `add_tag` /
-  `save_sprite` 是一个原子批量 = 一次 Aseprite 进程（旧版这里是 run_lua 手写 Lua 建结构
-  + 4616 个 draw_rect 分 4 批写入，画完这套帧要 7 次进程）；
-- 网格文件写进**会话工作目录**，所以 `paint_grid` 免 `confirmed=true`（AGENTS.md 的门闩约定）；
-- `run_lua` 只留导出：工具面没有 export op，这是逃逸舱的正当用途；
-- `inspect` 逐帧做美术质检（孤立像素 / 近重复色 / bbox 底边 / 红眼有没有被盖掉），
-  指标不达标就直接失败，不进入打包。
+The flow deliberately uses only the v2 tool surface:
+- `create_sprite` / `add_frames` / 24x `paint_grid` / `set_durations` / 4x
+  `add_tag` / `save_sprite` form one atomic batch = one Aseprite process (the old
+  version used run_lua with hand-written Lua to build the structure + 4616
+  draw_rect calls in 4 batches, so drawing this set of frames took 7 processes);
+- the grid files go into the **session working directory**, so `paint_grid` needs
+  no `confirmed=true` (the gate convention in AGENTS.md);
+- `run_lua` is kept for export only: the tool surface has no export op, which is a
+  legitimate use of the escape hatch;
+- `inspect` does the per-frame art QC (isolated pixels / near-duplicate colours /
+  bbox bottom edge / whether the red eyes got covered); if the metrics miss, the
+  run fails right there and never reaches packaging.
 """
 
 import asyncio
@@ -35,9 +40,9 @@ ASE_NAME = "dark_reaper_walk.ase"
 
 FRAMES = len(ch.DIRS) * ch.FRAMES
 TAGS = [f"walk_{d}" for d in ch.DIRS]
-DUR = 0.12                                   # 行走循环每帧等长，秒（本机构建按秒解释）
-EYE = ch.P["R"]                              # 兜帽下那双发光红眼；up 是背面，本来就没有
-GROUND = 30                                  # 脚跟着地那一行 + 描边：每帧 bbox 底边都必须等于它
+DUR = 0.12                                   # equal frame length across the loop, in seconds
+EYE = ch.P["R"]                              # glowing red eyes under the hood; 'up' is the back
+GROUND = 30                                  # heel row + outline: every bbox bottom equals it
 
 EXPORT = f"""
 local s = app.activeSprite
@@ -49,7 +54,7 @@ app.command.ExportSpriteSheet({{
   dataFilename = "{(BUILD / 'sheet.json').as_posix()}",
   dataFormat = SpriteSheetDataFormat.JSON_HASH,
 }})
--- 多帧文档上 saveCopyAs 不会写 frame.png，而是 frame1.png .. frame24.png：逐帧校验吃的就是这批
+-- On a multi-frame document saveCopyAs does not write frame.png but frame1.png .. frame24.png; per-frame verification reads exactly those
 s:saveCopyAs("{(BUILD / 'frames' / 'frame.png').as_posix()}")
 print("EXPORT ok")
 """
@@ -71,7 +76,8 @@ async def produce():
         assert r["ok"], r["error"]
         sid = r["session_id"]
 
-        # 一帧一个网格文件，放进会话工作目录 -> paint_grid 免确认
+        # One grid file per frame, inside the session work dir -> paint_grid needs
+        # no confirmation.
         grids = []
         for d in ch.DIRS:
             for i in range(ch.FRAMES):
@@ -103,7 +109,8 @@ async def produce():
 
 
 async def quality_check(client, sid):
-    """逐帧 inspect：把美术上的硬伤变成会失败的断言，而不是"没报错"。"""
+    """Per-frame inspect: turn art defects into assertions that fail the run, not
+    just "no error reported"."""
     started = time.perf_counter()
     print("  frame  iso  colors  dupes  coverage  bbox(x,y,w,h)      bottom  eyes")
     bad = []
@@ -114,13 +121,14 @@ async def quality_check(client, sid):
                                                       "frame": n})).structured_content
             assert res["ok"], res["error"]
             meta, m = res["meta"], res["metrics"]
-            # 文档级：inspect 的删帧逻辑只作用在临时拷贝上，原文档必须一帧不少
+            # Document level: inspect's frame deletion only touches a temp copy;
+            # the original must keep every frame.
             if meta["frames_total"] != FRAMES or [t["name"] for t in meta["tags"]] != TAGS:
                 raise SystemExit(f"frame {n}: document changed under us -> {meta}")
             x, y = m["bbox"]["x"], m["bbox"]["y"]
             w, h = m["bbox"]["width"], m["bbox"]["height"]
             eyes = EYE in m["palette"]
-            has_eyes = d != "up"                       # up 是背面，本来就没有脸
+            has_eyes = d != "up"                       # 'up' is the back, no face
             isolated = m["isolated_pixels"]
             dupes = len(m["near_duplicate_colors"])
             print(f"  {n:>5}  {isolated:>3}  {m['color_count']:>6}  {dupes:>5}  "
@@ -144,7 +152,7 @@ async def quality_check(client, sid):
 
 
 def _diff(got_path: Path, grid) -> int:
-    """导出帧 vs Python 侧设计网格的像素差。"""
+    """Pixel difference between an exported frame and the Python-side design grid."""
     got = Image.open(got_path).convert("RGBA")
     bad = 0
     for y in range(ch.H):
@@ -158,7 +166,8 @@ def _diff(got_path: Path, grid) -> int:
 
 
 def verify():
-    """逐帧像素比对：不是"没报错"，而是"画出来的就是设计的"。"""
+    """Per-frame pixel comparison: not "no error", but "what was drawn is what was
+    designed"."""
     bad = 0
     for d in ch.DIRS:
         for i in range(ch.FRAMES):
@@ -186,7 +195,7 @@ def package():
                       optimize=True, disposal=2)
         saved = Image.open(out)
         assert saved.n_frames == ch.FRAMES, \
-            f"{out.name} 只有 {saved.n_frames} 帧：有帧完全相同，被 GIF 编码器合并了"
+            f"{out.name} has only {saved.n_frames} frames: identical frames were merged by the GIF encoder"
         print(" ", out.name, saved.size, saved.n_frames, "frames")
     shutil.copyfile(BUILD / "sheet.png", DEMO / SHEET_NAME)
     shutil.copyfile(BUILD / "walk.ase", DEMO / ASE_NAME)
@@ -194,18 +203,19 @@ def package():
 
 
 def distinct_poses():
-    """每方向 6 帧必须两两不同，否则 GIF 会静默合并相同帧。"""
+    """The 6 frames per direction must all differ, or the GIF silently merges
+    identical frames."""
     dupes = []
     for d in ch.DIRS:
         uniq = {tuple(map(tuple, ch.build(d, i))) for i in range(ch.FRAMES)}
         if len(uniq) != ch.FRAMES:
-            dupes.append(f"{d}: {len(uniq)}/{ch.FRAMES} 唯一")
+            dupes.append(f"{d}: {len(uniq)}/{ch.FRAMES} unique")
     return dupes
 
 
 if __name__ == "__main__":
     dupes = distinct_poses()
-    assert not dupes, "存在完全相同的帧 -> " + "; ".join(dupes)
+    assert not dupes, "some frames are identical -> " + "; ".join(dupes)
     asyncio.run(produce())
     if verify():
         package()

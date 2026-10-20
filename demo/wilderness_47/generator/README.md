@@ -1,127 +1,156 @@
-# 荒野 47-blob tileset 生成器
+# Wilderness 47-blob tileset generator
 
-32x32 瓦片，12 列 x 19 行图集（384x608，228 槽），四种叠加地形各一套**完整**的
-47 块 blob 过渡矩阵；水面 4 帧循环；另有一张 24x16 瓦片（768x512）的示例场景。
+32x32 tiles in a 12-column x 19-row atlas (384x608, 228 slots); four overlay terrains each with a
+**complete** 47-tile blob transition matrix; a 4-frame water loop; plus a 24x16-tile (768x512) example
+scene.
 
 ```bash
 export ASEPRITE_PATH=/path/to/aseprite.exe
-python produce.py     # 建会话 -> 一批 ops 画完 -> 结构 + 观感门禁 + 逐像素校验 -> 打包
-python tiles.py       # 不碰 Aseprite：只跑两套门禁并出本地预览图
+python produce.py     # create session -> one batch of ops draws everything -> structure + craft gates + per-pixel verification -> package
+python tiles.py       # no Aseprite: runs both gate suites and writes the local preview
 ```
 
-产物写到上级 `demo/wilderness_47/`：
+Outputs go to the parent `demo/wilderness_47/`:
 
-| 文件 | 说明 |
+| File | Description |
 | --- | --- |
-| `wilderness_tileset.png` | 384x608 图集首帧（水相位 0） |
-| `wilderness_preview.png` | 2x + 分隔线 + 每格标「槽位号 块名 位掩码」，给人看的 |
-| `wilderness_scene.png` | 768x512 场景，按 2x 导出便于查看 |
-| `wilderness_water.gif` | 水面 interior 瓦片 4x、4 帧循环 |
-| `wilderness_manifest.json` | 槽位号 -> 行列 / 块 / 位掩码 / 变体 / 是否动画 + 调色板 |
-| `wilderness_tileset.ase` | 4 帧 + `water_loop` 标签（`*.ase` 在 .gitignore 里，本地生成） |
-| `wilderness_scene.ase` | 场景单帧文档（同上，不入库） |
+| `wilderness_tileset.png` | 384x608 atlas, first frame (water phase 0) |
+| `wilderness_preview.png` | 2x + separators + each cell labelled "slot index block name bitmask", for humans |
+| `wilderness_scene.png` | 768x512 scene, exported at 2x for viewing |
+| `wilderness_water.gif` | water interior tile at 4x, 4-frame loop |
+| `wilderness_manifest.json` | slot index -> row/column / block / bitmask / variant / animated + palette |
+| `wilderness_tileset.ase` | 4 frames + the `water_loop` tag (`*.ase` is in .gitignore, generated locally) |
+| `wilderness_scene.ase` | single-frame scene document (likewise, not committed) |
 
-中间产物在 `.build/`（已 gitignore）。
+Intermediate files live in `.build/` (gitignored).
 
-## 47 这个数字从哪来
+## Where the number 47 comes from
 
-一个瓦片有 4 条边（N/E/S/W）和 4 个角（NE/SE/SW/NW）共 8 个邻居位。**角位只有在
-相邻两条边都置位时才有视觉意义** —— 否则它和"该角未置位"画出来完全相同。于是 16 种
-边组合各自允许的角子集加起来正好 47：
+A tile has 4 edges (N/E/S/W) and 4 corners (NE/SE/SW/NW), 8 neighbour bits in total.
+**A corner bit only has visual meaning when both adjacent edges are set** — otherwise it draws exactly the
+same as "that corner not set". The legal corner subsets allowed by each of the 16 edge combinations
+therefore add up to exactly 47:
 
 ```
-0 边 1 + 1 边 4 + 相邻 2 边 8 + 相对 2 边 2 + 3 边 16 + 4 边 16 = 47
+0 edges 1 + 1 edge 4 + 2 adjacent edges 8 + 2 opposite edges 2 + 3 edges 16 + 4 edges 16 = 47
 ```
 
-`blob_configs()` 枚举这 47 个位掩码，`mask_for()` 栅格化。位掩码约定
-（`bit0=N bit1=E bit2=S bit3=W bit4=NE bit5=SE bit6=SW bit7=NW`）和槽位号一起写进
-`wilderness_manifest.json`，**导入引擎以 manifest 为准，不要按肉眼顺序猜**。
+`blob_configs()` enumerates these 47 bitmasks, and `mask_for()` rasterizes them. The bitmask convention
+(`bit0=N bit1=E bit2=S bit3=W bit4=NE bit5=SE bit6=SW bit7=NW`) is written into
+`wilderness_manifest.json` together with the slot indices;
+**the importing engine treats the manifest as authoritative — do not guess from visual order**.
 
-## 几何必须做减法
+## The geometry must be subtractive
 
-`mask_for()` 从"整格都是叠加地形"出发，每条**未**置位的边沿边挖掉宽 `MARGIN` 的
-**通长**基底带，再逐角收拾（直角 / 内凹圆弧 / 什么都不做 / 把直角向内削圆）。
+`mask_for()` starts from "the whole tile is overlay terrain", carves a **full-length** base band of width
+`MARGIN` along every **unset** edge, then tidies each corner (square / concave arc / nothing / round the
+square corner inward).
 
-这条规则是被接缝校验逼出来的。先前两版都从中心方块做**加法**：
+This rule was forced by the seam check. Both earlier versions worked **additively** from a centre square:
 
-- 角方格只在"两边一角都置位"时填满 -> 一条左右接通的直边两端各留一个角缺口，
-  一排瓦片连起来读成**城齿**；
-- 改成"单边也填满角方格" -> 叠加区在角上顶到瓦片边缘，而邻格那里是基底，
-  于是边界变成一串半圆，整片地形读成**云朵**。
+- a corner cell was filled only when "both edges and the corner are set" -> a straight edge spanning left
+  to right kept a corner notch at each end, so a row of tiles read as **crenellations**;
+- changing it so "a single edge also fills the corner cell" -> the overlay region reached the tile edge at
+  the corner while the neighbour had base terrain there, so the border became a string of semicircles and
+  the whole terrain read as **clouds**.
 
-只有减法能让"连续地形的直边"收成一条通长直线。`MARGIN` 就是转角圆弧的半径：
-8（四分之一格）时池塘像花瓣，6 才只留下"圆了个角"的感觉。
+Only subtraction lets "the straight edge of continuous terrain" close into one full-length line. `MARGIN`
+is the corner arc radius: at 8 (a quarter of the tile) the pond looks like flower petals, and 6 is what
+leaves just a "rounded corner" feel.
 
-## 层叠与相邻：图集支持什么，场景就只能画什么
+## Layering and adjacency: the scene can only draw what the atlas supports
 
-`COVERS = {'sand': {'water'}}`、`BASE_OF = {dirt/sand/rock: grass, water: sand}`
-定义了这套图集**唯一**支持的相邻关系。场景不手摆瓦片：先画一张地形图，再按
-`bits_at()` 从 8 邻居查掩码铺砖 —— 缺哪块砖、哪对地形相邻但图集里没有过渡砖，
-当场暴露。水画在沙之上，所以沙的 blob 不会被身边的水切断（水下仍然是沙）。
-物件另有 `PROP_TERRAIN_OK`：芦苇只能在沙岸、睡莲只能在水上、树不能长在河里。
+`COVERS = {'sand': {'water'}}` and `BASE_OF = {dirt/sand/rock: grass, water: sand}` define the **only**
+adjacency relations this atlas supports. The scene does not hand-place tiles: draw a terrain map first,
+then lay tiles by looking up the mask from the 8 neighbours via `bits_at()` — a missing tile, or a pair of
+adjacent terrains with no transition tile in the atlas, surfaces on the spot. Water is painted over sand,
+so sand's blob is not cut off by the water beside it (it is still sand under the water). Props have their
+own `PROP_TERRAIN_OK`: reeds only on sand banks, lily pads only on water, trees cannot grow in the river.
 
-## 材质与边界：像手画的靠这几条
+## Materials and borders: what makes it look hand-drawn
 
-第一版结构做对了但**不好看**。对抗性审查量出来的根因全在美术语言：色阶只改明度
-（直色阶）、五种材质互不借色、89% 的边界是零抖动直线、笔触全挤在同一列、泥土路面
-非主色只占 1.5%（近乎平涂）。现在的做法：
+The first version got the structure right but **did not look good**. An adversarial review measured the
+root causes, all in the art language: ramps changed value only (straight ramps), the five materials
+borrowed no color from one another, 89% of borders were zero-jitter straight lines, the strokes all
+crowded into the same column, and the dirt road's non-dominant color made up only 1.5% (nearly flat fill).
+What it does now:
 
-- **一张会借色的盘（34 色）**。每条色阶同时改明度和色相：暗端往蓝紫挪、亮端往黄橙挪。
-  `z` 冷紫同时是土/沙/石三者的暗端过渡，`y` 暖米同时是沙与土的受光顶面，
-  `H`/`h`/`G`/`g` 既是大草也是路缘戳进来的草叶 —— 借色让五种地形像一家人而不是五张贴纸。
-- **大色块用"变半径圆团"，不用值噪声**。值噪声在格点上只能画**轴对齐的矩形**，拿它
-  分档，路面铺出来是棋盘格。`_blob_field` 撒几个半径各不相同的圆心，像素按"离最近圆心
-  距离扣掉该圆半径"取值，团块才有大有小、互相吞并；距离按瓦片取模算，边界处自然绕回去，
-  平铺无缝。圆心太密（3x3）又读成豹纹 —— 定在 2x2 大团，小尺度细节交给 `_clump` 的
-  2-3 像素笔触。
-- **分档用分位数，不用魔法阈值**。同一套手调阈值在不同种子下差别极大（泥土那场噪声
-  实测只铺在 0.36-0.59），固定阈值会让材质 98% 落进同一档。`_cuts_for` 按该材质自己
-  那场的分位数切，"主色厚"是设定的比例而不是运气。
-- **色斑交界收一层主色边**（`_soft_tier` 的 `eps`）。连续场里离阈值最近的像素恰好就是
-  色斑轮廓，把它们涂成主色 = 给每个团块描 1-2px 过渡带，这就是"过渡色薄"，
-  也是硬切边和"画过"的区别。
-- **边界要参差，但必须能对齐**。`MARGIN` 是转角弧半径（8 会把池塘画成花瓣，6 才对），
-  边界线本身再按 `_smooth1d` 漂移 ±2px；抖动曲线**按"哪条边"取种子、不按位掩码取**，
-  否则相邻两砖各抖各的，铺开会在接缝处断开。
-- **两相边界互相侵入**：草叶戳进土路 2 格、路缘外撒砂砾，频率 1/9 与 1/7。第一版给到
-  1/4，读起来不是"边界有机"而是"边界脏了"。
-- **水的深浅只按离岸距离分档，且远档必须与 interior 砖完全相同**，否则岸砖与 interior
-  砖交界处会横出一条与地形无关的硬线；深色只用作波峰下的暗线。浪花线、波纹、波长的
-  横向周期都必须整除瓦片宽。
-- **铺石靠砖缝不靠噪点**：16x8 的砖、缝线自身漂移，才读得出"一块块铺"。
-  **interior 必须有多张变体**：四面同地形的格子按位置哈希在 A/B/C 之间挑。
+- **One palette that borrows across ramps (34 colors)**. Every ramp shifts both value and hue: the dark
+  end leans blue-purple, the light end leans yellow-orange. The cold purple `z` is the dark-end transition
+  for dirt, sand and stone alike; the warm beige `y` is the lit top face for both sand and dirt;
+  `H`/`h`/`G`/`g` serve both as big grass and as the grass blades poking in at the road edge — borrowing
+  makes the five terrains look like one family rather than five stickers.
+- **Large color fields use "variable-radius clumps", not value noise**. On a lattice, value noise can only
+  paint **axis-aligned rectangles**; tier it and the road comes out as a checkerboard. `_blob_field`
+  scatters a few clump centres with different radii, and each pixel takes the value "distance to the
+  nearest centre minus that circle's radius", so clumps come in different sizes and swallow one another;
+  distances are computed modulo the tile, so they wrap naturally at the border and tile seamlessly. Too
+  dense a centre grid (3x3) reads as leopard print again — it is fixed at 2x2 large clumps, and
+  small-scale detail is left to `_clump`'s 2-3 pixel strokes.
+- **Tier by quantiles, not magic thresholds**. The same hand-tuned thresholds differ wildly across seeds
+  (the dirt field's noise measured only 0.36-0.59), so fixed thresholds would put 98% of a material into
+  one tier. `_cuts_for` cuts at quantiles of that material's own field, so "the dominant color is thick"
+  is a chosen ratio rather than luck.
+- **Pull a layer of dominant-color edge around color-patch boundaries** (`eps` in `_soft_tier`). In a
+  continuous field the pixels nearest the threshold are exactly the patch contour; painting them in the
+  dominant color draws a 1-2px transition band around each clump — that is the "thin transition color",
+  and the difference between a hard cut edge and one that looks "painted over".
+- **Borders must be ragged but must still line up**. `MARGIN` is the corner arc radius (8 turns the pond
+  into flower petals, 6 is right), and the border line itself drifts ±2px via `_smooth1d`; the jitter
+  curve is **seeded by which edge it is, not by the bitmask**, otherwise two adjacent tiles each jitter
+  their own way and the layout breaks at the seam.
+- **The two sides of a border intrude on each other**: grass blades poke 2 cells into the dirt road and
+  grit spills outside the road edge, at frequencies 1/9 and 1/7. The first version used 1/4, which reads
+  as "the border is dirty" rather than "the border is organic".
+- **Water depth is tiered only by distance from shore, and the far tier must be pixel-identical to the interior tile**,
+  otherwise a hard line unrelated to the terrain runs across the boundary between shore tiles and interior
+  tiles; the dark color is used only for the dark line under wave crests. The horizontal period of the foam
+  line, the ripples and the wavelength must all divide the tile width.
+- **Stone paving reads through brick seams, not noise**: 16x8 bricks with the seam lines themselves
+  drifting are what make it read as "laid block by block". **Interior must have multiple variants**:
+  cells surrounded by the same terrain on all four sides pick between A/B/C by a position hash.
 
-## 校验不是"没报错"
+## Verification is not "no errors reported"
 
-`tiles.selfcheck()`（不启动 Aseprite）+ `produce.verify()`（比对 Aseprite 落盘结果）。
-除结构判据外还有一组**观感门禁** `tiles.art_audit()` —— 它量的是瓦片**实际发到画布上的
-颜色**，不是任何手写的"色阶表"（表和代码会各说各话，声明里四档、铺出来一个纯色，
-正是第一版看不见的）：
+`tiles.selfcheck()` (does not start Aseprite) + `produce.verify()` (compares against what Aseprite wrote to
+disk). Besides the structural criteria there is a set of **craft gates** in `tiles.art_audit()` — it
+measures the **colors a tile actually puts on the canvas**, not any hand-written "ramp table" (a table and
+the code can tell different stories: four tiers declared while a flat fill comes out, which is exactly what
+the first version failed to see):
 
-1. 47 个掩码不重不漏；`0xFF` 铺满整格，`0x00` 是孤立小岛、一像素都不许碰瓦片边界；
-2. **接缝契约**：同地形相邻两砖共享边界的**中段**（避开抖动带）必须逐像素同覆盖；
-   角区允许有限凹口 —— 地形边界在相邻两格之间出现 T 形岔口时，两块砖看到的对角格不是
-   同一个，几像素凹口是 47-blob 的固有近似（Godot / Tiled 的 blob 同样如此），>8px 判失败。
-   当前实测最大 **2** 像素；
-3. 场景里出现的每一对相邻地形都必须有对应过渡砖；物件只能落在它允许的地形上；
-4. **每条色阶实际发色的色相跨度 ≥10°**；
-5. **材质之间至少 2 对共用 ≥2 档色**；
-6. **零抖动的边界列 ≤50%**、**笔触不得有 50% 以上挤在同一列**；
-7. **非主色像素 8%-55%，且最多的一档 ≥45%**：下限防平涂，上限防碎噪 ——
-   这两条是同一轮里先后踩过两头留下的；
-8. 场景最重复的一款 ≤25%；4 个水相位两两不同（否则 GIF 编码器会合并帧，循环只剩一帧）；
-9. 调色板键必须是合法 Lua 标识符（`paint_grid` 的数据文件拿它当表键）；
-10. Aseprite 导出的 4 帧图集 + 场景与设计矩阵**逐像素 0 差异**。
+1. The 47 masks are unique and complete; `0xFF` fills the whole tile, `0x00` is an isolated island that
+   must not touch the tile border by a single pixel;
+2. **Seam contract**: two same-terrain neighbours must have identical per-pixel coverage over the **middle**
+   of their shared border (avoiding the jitter band); the corner zone tolerates a limited notch — when a
+   terrain border forms a T-junction between two adjacent cells, the two tiles see different diagonal
+   cells, and a notch of a few pixels is inherent to the 47-blob approximation (Godot / Tiled blobs behave
+   the same way); more than 8px fails. The current measured maximum is **2** pixels;
+3. every pair of adjacent terrains that appears in the scene must have a corresponding transition tile;
+   props may only sit on the terrains they allow;
+4. **Every ramp's actual on-canvas hue span is ≥10°**;
+5. **At least 2 pairs of materials share ≥2 color tiers**;
+6. **Zero-jitter border columns ≤50%**, and
+   **no more than 50% of strokes may crowd into the same column**;
+7. **Non-dominant-color pixels 8%-55%, and the largest single tier ≥45%**: the lower bound guards against
+   flat fill, the upper bound against speckle noise — both were left behind after hitting the two extremes
+   one after the other in the same round;
+8. the most repeated tile in the scene ≤25%; the 4 water phases are pairwise different (otherwise the GIF
+   encoder merges frames and the loop is left with one frame);
+9. palette keys must be valid Lua identifiers (`paint_grid`'s data file uses them as table keys);
+10. the 4-frame atlas Aseprite exports + the scene differ from the design matrices by **0 pixels**.
 
-`python tiles.py` 任一指标不达标即以非零码退出；`produce.py` 开头也跑同一套。
+`python tiles.py` exits non-zero if any metric fails; `produce.py` also runs the same suite at the start.
 
-## 画这张图用了什么工具面
+## What tool surface was used to draw this
 
-- 图集 = **一次 `apply_operations` 原子批量、8 个 op**：`add_frames` + 4x`paint_grid`
-  （每个水相位一张，共约 93 万像素）+ `set_durations` + `add_tag` + `save_sprite`，
-  实测 1074ms、零警告；场景 = 另一次批量 `paint_grid` + `save_sprite`，602ms。
-- 网格文件写进**会话工作目录**，所以 `paint_grid` 免 `confirmed=true`
-  （见 `AGENTS.md` 的门闩约定：文件在工作目录内即视为可信输入）。
-- `run_lua` 只用来导出 PNG —— 工具面没有 export op。多帧文档上 `saveCopyAs` 会写成
-  `x1.png…xN.png`，所以按 `inspect.lua` 的老办法先拷临时单帧文档再导出。
-- 帧时长单位：op 入参与 `Frame.duration` 都是**秒**，别在 Lua 里"顺手补 x1000"。
+- The atlas = **one atomic `apply_operations` batch, 8 ops**: `add_frames` + 4x`paint_grid` (one per water
+  phase, ~930k pixels in total) + `set_durations` + `add_tag` + `save_sprite`, measured 1074ms with zero
+  warnings; the scene = another batch of `paint_grid` + `save_sprite`, 602ms.
+- Grid files are written into the **session work directory**, so `paint_grid` is exempt from
+  `confirmed=true` (see the gate convention in `AGENTS.md`: a file inside the work directory counts as
+  trusted input).
+- `run_lua` is used only to export PNGs — the tool surface has no export op. On a multi-frame document
+  `saveCopyAs` writes `x1.png…xN.png`, so it follows `inspect.lua`'s old approach: copy a temporary
+  single-frame document, then export.
+- Frame duration unit: both op params and `Frame.duration` are **seconds**; do not "casually multiply by
+  1000" in Lua.

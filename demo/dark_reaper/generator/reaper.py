@@ -1,11 +1,13 @@
-"""暗黑死神行走循环：32x32，4 方向 x 6 帧。
+"""Dark reaper walk cycle: 32x32, 4 directions x 6 frames.
 
-死神没有腿，靠袍摆的行波涟漪 + 整体起伏 + 骨脚交替读出"走"：
-下摆每列的底边 y = 基准 + round(1.6 * sin(列相位 + 时间相位))，
-时间相位按帧推进，于是波纹沿袍子横向流动；两条骨脚按 swing 反相抬落。
+The reaper has no legs; the walk is read from a travelling ripple along the robe
+hem plus the overall rise and fall and the alternating bone feet: the hem bottom
+of each column is y = base + round(1.6 * sin(column phase + time phase)), and the
+time phase advances per frame, so the ripple flows sideways along the robe; the
+two bone feet lift and fall in antiphase with swing.
 
-  python reaper.py            # 打印 ASCII
-  python reaper.py --sheet    # 本地接触表 .build/reaper_sheet.png
+  python reaper.py            # print the ASCII frames
+  python reaper.py --sheet    # local contact sheet .build/reaper_sheet.png
 """
 
 import math
@@ -17,20 +19,20 @@ DIRS = ["down", "left", "right", "up"]
 FRAMES = 6
 
 P = {
-    "L": "#3A4052",  # 袍亮面
-    "M": "#262B38",  # 袍主体
-    "D": "#171B24",  # 袍暗部
-    "X": "#0A0C10",  # 描边 / 兜帽内腔
-    "R": "#FF3B30",  # 眼
-    "C": "#FFD5CF",  # 眼神光
-    "o": "#E8E4D8",  # 骨
-    "O": "#A79E8B",  # 骨暗部
-    "b": "#6B4A2B",  # 镰柄
-    "n": "#45301B",  # 镰柄暗部
-    "B": "#C9D3DE",  # 镰刃
-    "W": "#EEF4FA",  # 刃口高光
-    "E": "#7C8894",  # 刃背
-    "s": "#8E2F52",  # 腰带/破布
+    "L": "#3A4052",  # robe lit side
+    "M": "#262B38",  # robe body
+    "D": "#171B24",  # robe shadow
+    "X": "#0A0C10",  # outline / hood cavity
+    "R": "#FF3B30",  # eye
+    "C": "#FFD5CF",  # eye glint
+    "o": "#E8E4D8",  # bone
+    "O": "#A79E8B",  # bone shadow
+    "b": "#6B4A2B",  # scythe shaft
+    "n": "#45301B",  # scythe shaft shadow
+    "B": "#C9D3DE",  # scythe blade
+    "W": "#EEF4FA",  # blade edge highlight
+    "E": "#7C8894",  # blade spine
+    "s": "#8E2F52",  # belt / rag
 }
 
 G = []
@@ -73,11 +75,12 @@ def phase(i):
                 wave=2 * math.pi * i / FRAMES)
 
 
-# ---------------------------------------------------------------- 部件
+# ---------------------------------------------------------------- parts
 
 def robe(d, ph):
-    """袍身：逐行加宽 + 随深度增大的横向摆动；底边用宽波长小振幅的行波，
-    读作布料起伏而不是溶解。"""
+    """Robe body: widens row by row, with sideways sway growing with depth; the hem
+    uses a long-wavelength, low-amplitude travelling wave, so it reads as fabric
+    undulating rather than dissolving."""
     top = 12 + ph["bob"]
     lean = {"down": 0, "up": 0, "left": -1, "right": 1}[d]
     spans = {}
@@ -129,7 +132,7 @@ def hood(d, ph):
     lean = {"down": 0, "up": 0, "left": -1, "right": 1}[d]
     ell(16 + lean, y + 6, 7.2, 6.6, "M")
     rect(9 + lean, y + 5, 15, 5, "M")
-    rect(15 + lean, y - 1, 3, 3, "M")            # 兜帽尖顶
+    rect(15 + lean, y - 1, 3, 3, "M")            # hood peak
     rect(16 + lean, y - 2, 2, 2, "L")
     rect(10 + lean, y + 2, 4, 2, "L")
     if d == "down":
@@ -143,14 +146,18 @@ def hood(d, ph):
     else:
         fx = 11 if d == "left" else 18
         ell(fx + 1.5, y + 7, 3.4, 3.8, "X")
-        # 侧视的兜帽后缘暗面：必须先于眼睛画。右视时它和眼睛同列（x=21-22），
-        # 顺序反过来就会把那双红眼整块涂掉（inspect 的 palette 里查不到 #FF3B30）。
+        # Shadow on the hood's rear edge in side view: it must be drawn before the
+        # eyes. Facing right it shares columns with the eye (x=21-22), and the
+        # opposite order paints over both red eyes (inspect's palette then has no
+        # #FF3B30).
         rect(9 if d == "left" else 21, y + 3, 2, 6, "D")
         rect(fx + (0 if d == "left" else 3), y + 7, 2, 2, "R")
 
 
 def sleeves(d, ph):
-    """袖口垂在袍侧，骨手握住镰柄——手必须贴住柄，不然像飘在身上的白点。"""
+    """The sleeves hang at the robe's sides and the bone hand grips the scythe
+    shaft -- the hand must touch the shaft, otherwise it looks like a white speck
+    floating on the body."""
     y = 13 + ph["bob"]
     s = int(round(ph["swing"] * 2))
     if d == "down":
@@ -168,16 +175,19 @@ def sleeves(d, ph):
 
 
 def scythe(d, ph):
-    """镰刀整体随持握手平移，只动端点会让柄伸缩。
+    """The whole scythe translates with the gripping hand; moving only the ends
+    would make the shaft stretch.
 
-    柄长要收着画：泵动是 ±2px，柄底一旦越过第 28 行，描边就顶到画布最后一行，
-    bbox 底边从 30 跳到 32 —— 那是镰刀在戳地板，不是迈步。收短只动柄底，
-    刃与持握手的位置一点不变。
+    The shaft is kept short on purpose: the bob is ±2px, and once the shaft bottom
+    passes row 28 the outline hits the canvas's last row and the bbox bottom jumps
+    from 30 to 32 -- that is the scythe poking the floor, not a step. Shortening
+    moves only the shaft bottom; the blade and the gripping hand stay put.
     """
     y = ph["bob"]
     s = int(round(ph["swing"] * 2))
     if d == "down":
-        # 正/背视：刃朝身体外侧扫出，向内会横过脸把兜帽盖掉
+        # Front/back view: the blade sweeps outward from the body; inward it would
+        # cross the face and cover the hood.
         x, top, shaft = 24, 3 + y - s, 23
         rect(x, top, 2, shaft, "b")
         rect(x, top, 1, shaft, "n")
@@ -195,7 +205,8 @@ def scythe(d, ph):
 
 
 def blade(cx, cy, direction, span=11):
-    """逐列铺刃：抛物线下坠 + 由柄向刃尖收薄。脊在上（E）、刃口在下（W）。"""
+    """Lay the blade out column by column: a parabolic droop plus thinning from the
+    shaft towards the tip. Spine on top (E), edge on the bottom (W)."""
     for i in range(span + 1):
         x = cx + direction * i
         u = i / span
@@ -223,9 +234,11 @@ def frame_index(d, i):
 
 
 def grid_lua(grid, title):
-    """paint_grid 用的 Lua 数据文件（这个 build 的 json.decode 返回 userdata，只能 dofile）。
+    """The Lua data file paint_grid consumes (in this build json.decode returns
+    userdata, so dofile is the only way in).
 
-    行是字符串，None 写成 '.'（透明、跳过），颜色一律 alpha=255。
+    Rows are strings, None is written as '.' (transparent, skipped), and every
+    colour is alpha=255.
     """
     used = {c for row in grid for c in row if c}
     palette = ", ".join(f'{c} = "{P[c]}"' for c in sorted(used))

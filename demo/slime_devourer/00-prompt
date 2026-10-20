@@ -1,11 +1,11 @@
-使用Asepritemcp，
-生成像素艺术精灵表，
-展示一只会吞噬猎物的黏液怪，绿色软体身体、一张占满半张脸的大嘴和尖牙，
-四方向吞噬动画，分别为向下、向上、向左、向右，每个方向包含5帧动画
-（待机 → 蓄力下压 → 张口突进 → 咬合 → 吞咽鼓包），
-游戏素材，2D，32X32大小，扁平色彩，透明背景，精灵表布局。
-占满画布，光源统一在左上。
-完成后，输出对应png，ase文件。
+Use Aseprite MCP,
+generate a pixel art sprite sheet
+showing a slime monster that devours its prey: a green blob body, a huge maw covering half its face, and fangs,
+four-direction devour animation — down, up, left, right — 5 frames of animation per direction
+(idle → windup crouch → lunge with open maw → chomp → swallow bulge),
+game asset, 2D, 32X32, flat colors, transparent background, sprite sheet layout.
+Fill the canvas, light consistently from the top-left.
+When done, output the matching png and ase files.
 
 
-把那个怪物上、下、左、右的循环动画分别导出为对应的gif动图，共四个，保留每帧各自的时长。
+Export the monster's up, down, left, right loop animations as matching gif files, four in total, preserving each frame's individual duration.

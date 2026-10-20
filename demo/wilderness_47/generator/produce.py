@@ -1,17 +1,23 @@
-"""荒野 47-blob tileset 产出脚本：建会话 -> 一批 ops 画完 -> 逐像素校验 -> 打包 demo 素材。
+"""Wilderness 47-blob tileset build script: create session -> one batch of ops to
+draw everything -> per-pixel verification -> package the demo assets.
 
-用法（在仓库任意位置）：
+Usage (from anywhere in the repo):
     ASEPRITE_PATH=/path/to/aseprite.exe python demo/wilderness_47/generator/produce.py
 
-只用 v2 工具面：
-- 图集 = 一次 `apply_operations` 原子批量：`add_frames` + 4x`paint_grid`（每个水相位一张）
-  + `set_durations` + `add_tag` + `save_sprite`；场景 = 另一次批量 `paint_grid` + `save_sprite`；
-- 网格文件写进**会话工作目录**，所以 `paint_grid` 免 `confirmed=true`（见 AGENTS.md 的门闩约定）；
-- `run_lua` 只用来导出 PNG —— 工具面没有 export op。多帧文档上 `saveCopyAs` 会写成
-  `x1.png…xN.png`，所以按 `inspect.lua` 的老办法先拷临时单帧文档再导出。
+Only the v2 tool surface is used:
+- atlas = one `apply_operations` atomic batch: `add_frames` + 4x `paint_grid` (one
+  per water phase) + `set_durations` + `add_tag` + `save_sprite`; scene = another
+  batch of `paint_grid` + `save_sprite`;
+- the grid files go into the **session working directory**, so `paint_grid` needs
+  no `confirmed=true` (see the gate convention in AGENTS.md);
+- `run_lua` is only used to export PNGs -- the tool surface has no export op. On a
+  multi-frame document `saveCopyAs` writes `x1.png...xN.png`, so copy a temporary
+  single-frame document first and export from that, the old `inspect.lua` trick.
 
-校验不是"没报错"：`verify()` 把 Aseprite 落盘的 PNG 与 Python 侧的设计矩阵逐像素比对，
-并核对 4 个水相位两两不同、47 块矩阵在图集里不重不漏。
+Verification is not "no error reported": `verify()` compares the PNG Aseprite wrote
+against the Python-side design matrix pixel by pixel, and also checks that the 4
+water phases are pairwise distinct and that the 47-tile matrices appear in the
+atlas without duplicates or gaps.
 """
 
 import asyncio
@@ -40,13 +46,14 @@ SCENE_ASE = "wilderness_scene.ase"
 MANIFEST = "wilderness_manifest.json"
 
 FRAME_DUR = 0.14
-# 水面动画的取样格：第 16 行第 2 槽 = water 的 interior 变体 A
+# Sample cell for the water animation: row 16, slot 2 = water's interior variant A
 WATER_CELL = (tl.VARIANT_ROW, tl.BLOCKS.index("water"))
 SCENE_SCALE = 2
 
 
 def _grid_file(sid, name, matrix, title):
-    """把设计矩阵写成 paint_grid 吃的 Lua 数据文件，放进会话工作目录（免确认）。"""
+    """Write the design matrix as the Lua data file paint_grid consumes, inside the
+    session work dir (no confirmation needed)."""
     path = BUILD / "work" / "sessions" / sid / name
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(tl.grid_lua(matrix, title), encoding="utf-8")
@@ -82,7 +89,7 @@ async def produce():
                                env=env, cwd=str(ROOT))
 
     async with Client(transport) as c:
-        # ---------------- 图集：4 个水相位 = 4 帧 ----------------
+        # ---------------- atlas: 4 water phases = 4 frames ----------------
         r = (await c.call_tool("apply_operations", {"ops": [
             {"op": "create_sprite", "width": tl.SHEET_W, "height": tl.SHEET_H,
              "color_mode": "rgb"}]})).structured_content
@@ -116,7 +123,7 @@ async def produce():
               [t["name"] for t in res["meta"]["tags"]],
               f'{res["metrics"]["color_count"]} colors in frame 1')
 
-        # ---------------- 场景：按 blob 查表把地形图铺出来 ----------------
+        # ---------------- scene: lay the terrain map out via the blob table ----------------
         r = (await c.call_tool("apply_operations", {"ops": [
             {"op": "create_sprite", "width": tl.SCENE_COLS * tl.TILE,
              "height": tl.SCENE_ROWS * tl.TILE, "color_mode": "rgb"}]})).structured_content
@@ -141,7 +148,8 @@ async def produce():
 
 
 async def _export_frames(c, sid, stem: Path):
-    """逐帧导出 PNG：多帧文档上 saveCopyAs 会写成 x1..xN，所以先拷成单帧临时文档。"""
+    """Export PNGs frame by frame: on a multi-frame document saveCopyAs writes
+    x1..xN, so copy to a temporary single-frame document first."""
     if stem.name == "scene":
         code = (f'app.activeSprite:saveCopyAs("{(stem.parent / "scene.png").as_posix()}")\n'
                 'print("EXPORT scene")\n')
@@ -167,7 +175,8 @@ print("EXPORT frames=" .. #s.frames)
 
 
 def verify():
-    """逐像素比对 Aseprite 落盘结果与设计矩阵；顺带核对矩阵本身的完整性。"""
+    """Pixel-compare Aseprite's output with the design matrix; also check the
+    matrices themselves for completeness."""
     bad = 0
     for phase in range(tl.WATER_PHASES):
         d = _diff(BUILD / "frames" / f"atlas_{phase + 1}.png", tl.sheet_frame(phase))
@@ -180,24 +189,26 @@ def verify():
     hashes = {Image.open(BUILD / "frames" / f"atlas_{i + 1}.png").tobytes()
               for i in range(tl.WATER_PHASES)}
     if len(hashes) != tl.WATER_PHASES:
-        print(f"  FAIL: 水相位只有 {len(hashes)}/{tl.WATER_PHASES} 帧互不相同")
+        print(f"  FAIL: only {len(hashes)}/{tl.WATER_PHASES} water phases differ")
         return False
 
-    # 图集里 4 块 47 矩阵必须不重不漏：按掩码升序排进每块前 47 槽
+    # The 4 47-tile matrices in the atlas must be complete and unique: sorted into
+    # the first 47 slots of each block by ascending mask.
     for bi, block in enumerate(tl.BLOCKS):
         seen = {(slot["row"], slot["col"]) for slot in tl.manifest()["slots"]
                 if slot["block"] == block and slot["bits"] is not None}
         if len(seen) != 47:
-            print(f"  FAIL: {block} 块只落了 {len(seen)} 个掩码槽位")
+            print(f"  FAIL: block {block} landed only {len(seen)} mask slots")
             return False
     if bad:
         return False
-    print(f"pixel check: 全绿（{tl.WATER_PHASES} 帧图集 + 场景，0 像素差）")
+    print(f"pixel check: green ({tl.WATER_PHASES} atlas frames + scene, 0 pixels differ)")
     return True
 
 
 def _preview():
-    """给人和 README 看的标注图：2x + 分隔线 + 槽位号/块名/位掩码。"""
+    """Annotated image for humans and the README: 2x + separators + slot number,
+    block name and bitmask."""
     scale, gap, label = 2, 4, 12
     cell = tl.TILE * scale
     w = tl.COLS * (cell + gap) + gap
@@ -230,9 +241,11 @@ def _preview():
 
 
 def _publish(save, dest: Path, *, attempts=6, pause=0.5):
-    """先写临时文件再 os.replace 覆盖：目标可能正被看图工具占用（Windows）。
+    """Write a temp file first, then overwrite with os.replace: the target may be
+    held open by an image viewer (Windows).
 
-    临时名保留真实后缀，PIL 靠扩展名判定格式。
+    The temp name keeps the real suffix, because PIL decides the format from the
+    extension.
     """
     tmp = dest.with_name(f"{dest.stem}.part{dest.suffix}")
     for attempt in range(attempts):
@@ -274,7 +287,7 @@ def package():
                                      loop=0, optimize=True, disposal=2), out)
     saved = Image.open(out)
     assert saved.n_frames == tl.WATER_PHASES, \
-        f"{out.name} 只有 {saved.n_frames} 帧：帧被 GIF 编码器合并了"
+        f"{out.name} has only {saved.n_frames} frames: frames were merged by the GIF encoder"
     print(" ", GIF_NAME, saved.size, saved.n_frames, "frames")
 
     _publish(lambda t: t.write_text(json.dumps(tl.manifest(), ensure_ascii=False,
@@ -289,7 +302,7 @@ def package():
 
 if __name__ == "__main__":
     probs = tl.selfcheck()
-    assert not probs, "设计模型自检未通过: " + "; ".join(probs)
+    assert not probs, "design selfcheck failed: " + "; ".join(probs)
     BUILD.mkdir(parents=True, exist_ok=True)
     asyncio.run(produce())
     if verify():

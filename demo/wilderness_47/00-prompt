@@ -1,43 +1,51 @@
-使用 Aseprite MCP，
-画一套**专业完整**的俯视角野外 tileset，替换掉之前那张 Q 版草原。
+Use Aseprite MCP
+to draw a **professional, complete** top-down wilderness tileset, replacing the previous chibi grassland.
 
-32x32 瓦片，图集 12 列 x 19 行（384x608，228 槽），透明背景，纯像素风、不做抗锯齿。
-布局按工业标准来：每种"叠加地形压在基底上"的过渡做成**完整的 47 块 blob 矩阵**
-（4 条边 + 4 个角的 8 邻居位掩码，角位只有在相邻两条边都置位时才有意义，
-16 种边组合的合法角子集加起来正好 47 种）。四种叠加地形各一套：
-土路压草地、沙压草地、水压沙、石板压草地。
-图集按位掩码升序排列，每块第 48 槽放该地形 interior 变体 B；
-第 16 行放四种地形的 interior 变体 A/C 加四张草地变体；最后两行 24 格放物件。
+32x32 tiles, 12-column x 19-row atlas (384x608, 228 slots), transparent background, pure pixel art with no anti-aliasing.
+Follow an industry-standard layout: make the transition for each "overlay terrain on top of a base" a **complete 47-tile blob matrix**
+(8-neighbour bitmask across 4 edges + 4 corners; a corner bit only matters when both adjacent edges are set,
+and the legal corner subsets across the 16 edge combinations add up to exactly 47). Four overlay terrains, one matrix each:
+dirt road over grass, sand over grass, water over sand, stone slabs over grass.
+Order the atlas by ascending bitmask; slot 48 of each block holds that terrain's interior variant B;
+row 16 holds interior variants A/C of the four terrains plus four grass variants; the last two rows' 24 cells hold props.
 
-材质：**一张会借色的盘**（34 色），每条色阶同时改明度和色相 —— 暗端往蓝紫挪、亮端往
-黄橙挪，只改亮度叫直色阶，铺开来是廉价塑料；土/沙/石的暗端共用同一档冷紫，沙与土的
-受光顶面共用同一档暖米。光源统一左上。大色块**不准用值噪声**（它在格点上只能画轴对齐
-的矩形，路面会变棋盘格），要用半径各不相同的圆团距离场；分档按该材质自己那场的分位数
-切，不按手调阈值；色斑交界处再收一层主色边（过渡色薄）。小尺度细节用 2-3 像素的可辨认
-笔触（草叶、砂砾、波纹、砖缝），且不钉死在固定列上（纹理无明显方向性）。
-每种地形至少 3 个 interior 变体。
+Materials: **one palette that borrows across ramps** (34 colors); every ramp shifts both value and hue — the dark end
+leans blue-purple and the light end leans yellow-orange; a value-only ramp is called a straight ramp and, once laid out,
+reads as cheap plastic; dirt/sand/stone share the same cold-purple dark end, and sand and dirt share the same warm beige lit
+top face. Light comes consistently from the top-left. Large color fields **must not use value noise** (on a lattice it can
+only paint axis-aligned rectangles, so the road turns into a checkerboard); use a distance field of round clumps with
+different radii instead; cut the tiers at quantiles of that material's own field, not at hand-tuned thresholds; and pull a
+layer of dominant-color edge around color-patch boundaries (a thin transition color). Small-scale detail uses readable 2-3
+pixel strokes (grass blades, grit, ripples, brick seams), and is not nailed to fixed columns (the texture has no obvious
+directionality). Every terrain gets at least 3 interior variants.
 
-边界要参差：转角弧半径取 6（8 会把池塘画成花瓣），边界线本身沿边漂移 ±2px，但抖动
-曲线按"哪条边"取种子、不按位掩码取，否则相邻两砖各抖各的会在接缝断开；两相边界要互相
-侵入（草叶戳进土路、路缘外撒砂砾），频率压到 1/9 与 1/7 —— 太密就不是边界有机而是脏。
+Borders must be ragged: the corner arc radius is 6 (8 turns the pond into flower petals), and the border line itself
+drifts ±2px along the edge — but seed the jitter curve by "which edge" it is, not by bitmask, or two adjacent tiles will
+each jitter their own way and break at the seam; the two sides of a border must intrude on each other (grass blades poke
+into the dirt road, grit spills outside the road edge), with frequencies down at 1/9 and 1/7 — any denser and it is not an
+organic border but a dirty one.
 
-边界语言要成体系：叠加区贴基底那一圈给受光边（朝上朝左）或背光边（朝下朝右），
-基底贴叠加区那一圈给接触暗色。水是例外 —— 边界是随相位平移的浪花线，横向周期必须
-整除瓦片宽；水的深浅只能按离岸距离分档，且远档必须与 interior 砖完全相同。
+The border language must be systematic: the ring of the overlay region that touches the base gets a lit edge (facing up or
+left) or a shadow edge (facing down or right); the ring of the base that touches the overlay gets a contact shadow. Water
+is the exception — its border is a foam line that translates with the phase, and its horizontal period must divide the tile
+width; water depth may only be tiered by distance from shore, and the far tier must be pixel-identical to the interior tile.
 
-水面 4 帧循环动画（打 water_loop 标签），只有水块与水的 interior 变体随相位变化。
+The water surface is a 4-frame loop animation (tagged water_loop); only the water tiles and the water interior variants
+change with the phase.
 
-再用这 228 张砖拼一张 24x16 瓦片（768x512）的示例场景：斜向两格宽土路、右下角圆角
-池塘（沙岸 + 水 + 睡莲 + 芦苇）、两堆石板、树、灌木、花、蘑菇、倒木、栅栏。
-**场景不许手摆瓦片**：先画地形图，再按 blob 查表自动铺开，缺砖或相邻不支持当场暴露。
-高优先级地形画在低优先级之上（水彩画在沙上），所以沙的 blob 不被身边的水切断。
-物件按"能放在哪种地形上"的规矩摆。
+Then use these 228 tiles to assemble a 24x16-tile (768x512) example scene: a two-tile-wide diagonal dirt road, a rounded
+pond in the bottom-right corner (sand bank + water + lily pads + reeds), two stone-slab piles, trees, bushes, flowers,
+mushrooms, a fallen log, fences.
+**The scene must not hand-place tiles**: draw a terrain map first, then lay tiles out automatically by blob lookup, so a
+missing tile or an unsupported adjacency surfaces on the spot. Higher-priority terrain paints above lower-priority terrain
+(water paints over sand), so sand's blob is not cut off by the water beside it. Place props by the rule of which terrains
+they can sit on.
 
-交付前必须过三道结构性校验，不许用"没报错"代替：
-1. 47 个位掩码不重不漏；全置位铺满整格，空掩码是孤立小岛、一像素都不许碰瓦片边界；
-2. 接缝契约：同地形相邻两砖共享边界的中段必须逐像素同覆盖；
-3. Aseprite 落盘的 PNG 与设计矩阵逐像素 0 差异，4 个水相位两两不同。
+Before delivery it must pass three structural checks; "no errors reported" is not a substitute:
+1. The 47 bitmasks are unique and complete; the full mask fills the whole tile, and the empty mask is an isolated island that must not touch the tile border by a single pixel;
+2. Seam contract: for two same-terrain neighbours, the middle of their shared border must have identical per-pixel coverage;
+3. The PNG Aseprite writes and the design matrix differ by 0 pixels, and the 4 water phases are pairwise different.
 
-完成后输出：图集 PNG、2x 标注预览（每格标槽位号 / 块名 / 位掩码十六进制）、
-场景 PNG（2x）、水面循环 GIF、两个 ase 文件，以及一份 manifest.json
-（槽位号 -> 行列 / 块 / 位掩码 / 变体 / 是否动画 + 调色板）供引擎导入。
+When done, output: the tileset PNG, a 2x labelled preview (each cell labelled with slot index / block name / bitmask in
+hex), the scene PNG (2x), the water loop GIF, two ase files, and a manifest.json (slot index -> row/column / block /
+bitmask / variant / animated + palette) for engine import.

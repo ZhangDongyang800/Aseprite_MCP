@@ -1,13 +1,19 @@
-"""吞噬怪设计模型：4 方向 x 5 帧 @ 32x32，黏液软体怪。只产字符网格，不碰 Aseprite。
+"""Devourer design model: 4 directions x 5 frames @ 32x32, a slime blob monster.
+Produces character grids only, never touches Aseprite.
 
-侧视用"颅骨 + 下颚两块椭圆绕嘴角铰点反向旋转"的模型：张嘴时上颚抬起、
-下颚落下，中间的楔形就是口腔。这样嘴是咬穿轮廓的缺口，而不是体内的一个洞。
-几何只产出语义 mask，明暗与描边在渲染阶段统一算，所以 right 只是 left 的
-mask 水平镜像，光照仍固定在左上（因此把 left 整帧水平镜像过去会得到约 50 个
-明暗像素的差，produce.py 的质检正是按"mask 镜像 + 光照固定"来断言的）。
+The side view uses a model of "skull + lower jaw: two ellipses rotating in
+opposite directions about the mouth-corner hinge": when the mouth opens the upper
+jaw lifts and the lower jaw drops, and the wedge between them is the oral cavity.
+That makes the mouth a notch bitten through the outline, not a hole inside the
+body. The geometry only produces semantic masks; shading and outline are computed
+uniformly in the render pass, so right is just a horizontal mirror of left's mask
+while the light stays fixed at the upper left (mirroring the whole left frame
+therefore yields about 50 shading pixels of difference, and produce.py's QC
+asserts exactly "mask mirrored + fixed light").
 
-  python monster.py      # 打印 20 帧 ASCII，调形用
-  落盘与质检见 produce.py（每帧一个 paint_grid 吃 grid_lua() 产出的数据文件）。
+  python monster.py      # print the 20 ASCII frames, for shaping
+  writing and QC live in produce.py (one paint_grid per frame over the data file
+  grid_lua() emits).
 """
 
 import math
@@ -15,20 +21,21 @@ import math
 W = H = 32
 DIRS = ["down", "left", "right", "up"]
 PHASES = ["idle", "windup", "lunge", "chomp", "swallow"]
-# 帧时长随相位变化（秒）：慢呼吸的待机 -> 蓄力 -> 一瞬的突进 -> 咬合 -> 吞咽停顿
+# Frame durations vary by phase (seconds): slow-breathing idle -> windup ->
+# a flash of lunge -> chomp -> swallow pause
 PHASE_DUR = [0.2, 0.1, 0.08, 0.09, 0.22]
 
 PALETTE = {
-    "H": "#9BE564",  # 受光
-    "M": "#5FBF3A",  # 主体黏液
-    "D": "#3E8C26",  # 暗部
-    "X": "#1F4D14",  # 描边
-    "P": "#43152C",  # 口腔深处
-    "Q": "#8E2F52",  # 舌
-    "T": "#E7EEDA",  # 牙（冷象牙白：与眼神光 W 至少差一个通道 >8，否则 inspect 判近重复色）
-    "t": "#BFC4A6",  # 牙尖暗部
-    "E": "#101A0B",  # 眼
-    "W": "#F6FFE8",  # 眼神光
+    "H": "#9BE564",  # lit
+    "M": "#5FBF3A",  # main slime body
+    "D": "#3E8C26",  # shadow
+    "X": "#1F4D14",  # outline
+    "P": "#43152C",  # deep inside the mouth
+    "Q": "#8E2F52",  # tongue
+    "T": "#E7EEDA",  # teeth (cool ivory; >8 from glint W in one channel, else inspect sees dupes)
+    "t": "#BFC4A6",  # tooth-tip shadow
+    "E": "#101A0B",  # eye
+    "W": "#F6FFE8",  # eye glint
 }
 
 GRID = [[None] * W for _ in range(H)]
@@ -55,7 +62,8 @@ def blob(cx, cy, rx, ry, n=2.2):
 
 
 def rotate_pt(x, y, deg, pivot):
-    """屏幕坐标（y 向下）下绕 pivot 转 deg；deg>0 让左侧前端上扬。"""
+    """Rotate (x, y) by deg around pivot in screen coords (y down); deg>0 lifts the
+    left front end."""
     a = math.radians(deg)
     ca, sa = math.cos(a), math.sin(a)
     px, py = pivot
@@ -100,8 +108,9 @@ def flip(cells):
     return {(W - 1 - x, y) for x, y in cells}
 
 
-# 侧视：面向左。u/d = 上下颚张角，lean = 整体前冲位移，pivot = 嘴角铰点
-# gape = 张口半高（像素），0 即闭合成一条缝；u/d 让颅骨与下颚随之翻转
+# Side view: facing left. u/d = upper/lower jaw opening angle, lean = whole-body
+# lunge offset, pivot = mouth-corner hinge. gape = half-height of the opening in
+# px, 0 meaning closed to a slit; u/d make the skull and jaw rotate with it.
 SIDE_CFG = {
     0: dict(u=3, d=2, gape=0.0, lean=(0, 0), pivot=(23, 16), skull=(16, 12, 9.6, 7.2),
             jaw=(15, 20.5, 10.2, 8.0)),
@@ -115,7 +124,8 @@ SIDE_CFG = {
             jaw=(15, 20, 9.8, 8.4)),
 }
 
-# 正视：头/身两块对称叶，mouth 为口腔椭圆半轴
+# Front view: head and body are two symmetric lobes; mouth gives the maw ellipse
+# semi-axes
 FRONT_CFG = {
     0: dict(lean=(0, 0), head=(16, 12, 8.6, 6.6), body=(16, 21, 10.4, 8.0), mx=5.2, my=0.9),
     1: dict(lean=(0, 1), head=(16, 12.5, 9.2, 6.0), body=(16, 21.5, 11.0, 7.4), mx=6.2, my=2.6),
@@ -174,8 +184,10 @@ def back_masks(phase):
     cfg = FRONT_CFG[phase]
     hx, hy, hrx, hry = cfg["head"]
     bx, by, brx, bry = cfg["body"]
-    # 从背后看，张开的下颌会在头部两侧顶出一点轮廓；但同一相位的剪影宽度必须
-    # 与正视自洽（inspect 的 bbox 会盯这个），所以最宽只比正视颅骨宽 1px 半径。
+    # From behind, the open jaw pushes a little outline out on both sides of the
+    # head; but a phase's silhouette width must agree with the front view
+    # (inspect's bbox watches this), so the widest is only 1px of radius wider than
+    # the front skull.
     back_hrx = hrx * (1.0 + 0.055 * cfg["mx"]) if phase in (1, 2, 3) else hrx
     hrx = min(back_hrx, hrx + 1.0)
     body = blob(hx, hy, hrx, hry) | blob(bx, by, brx, bry)
@@ -183,7 +195,7 @@ def back_masks(phase):
     bot = int(by + bry) - 3
     seam = {(int(hx), y) for y in range(top, bot + 1)} & body
     ridge = neighbors(seam) & body
-    # 从背后看，张开的下颌在头部两侧顶出暗角
+    # From behind, the open jaw pushes dark corners out at the sides of the head
     maw = set()
     if phase in (1, 2, 3):
         k = 1 + int(cfg["mx"] * 0.35)
@@ -197,7 +209,8 @@ def back_masks(phase):
 
 
 def teeth_of(maw):
-    """上下牙交错，嘴角不放牙：否则牙会糊成一排噪点。"""
+    """Upper and lower teeth alternate, with none at the mouth corners: otherwise
+    the teeth smear into a row of noise."""
     cols = {}
     for x, y in maw:
         cols.setdefault(x, []).append(y)
@@ -240,7 +253,9 @@ def render(m):
         else:
             put(x, y, "M")
 
-    # 咽下的猎物：lump 本体回亮、外圈压暗、左上受光，才像皮下鼓起的一团
+    # Swallowed prey: the lump itself comes back up bright, the ring around it is
+    # pushed dark, and it is lit from the upper left -- only then does it read as a
+    # bulge under the skin.
     bulge = m["bulge"]
     for x, y in bulge:
         put(x, y, "M", overwrite=True)
@@ -266,7 +281,7 @@ def render(m):
             put(x, y, "X", overwrite=True)
         for x, y in teeth:
             put(x, y, "T", overwrite=True)
-        for x, y in teeth:  # 单格牙尖压暗，避免整排死白
+        for x, y in teeth:  # darken lone tooth tips so the row is not flat white
             if (x, y - 1) not in teeth and (x, y + 1) not in teeth:
                 put(x, y, "t", overwrite=True)
 
@@ -315,14 +330,17 @@ def frame_index(direction, phase):
 
 
 def frame_durations():
-    """20 帧的逐帧时长（秒），按方向重复五个相位。"""
+    """Per-frame durations for the 20 frames (seconds): the five phases repeated
+    per direction."""
     return PHASE_DUR * len(DIRS)
 
 
 def grid_lua(matrix, title):
-    """paint_grid 用的 Lua 数据文件（本机 json.decode 返回 userdata，只能 dofile）。
+    """The Lua data file paint_grid consumes (on this build json.decode returns
+    userdata, so dofile is the only way in).
 
-    '.' 是透明跳过，其余字符查 PALETTE；palette 只带这一帧真正用到的颜色。
+    '.' is transparent and skipped, every other character is looked up in PALETTE,
+    and the palette only carries the colours this frame actually uses.
     """
     used = {code for row in matrix for code in row if code != "."}
     palette = ", ".join(f'{code} = "{PALETTE[code]}"' for code in sorted(used))

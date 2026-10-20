@@ -1,17 +1,23 @@
-"""黏液吞噬怪 产出脚本：建会话 -> 一批 op（扩帧 + 20 帧像素 + 时长 + tag）-> inspect 质检 -> 逐像素校验 -> 打包。
+"""Slime devourer build script: create session -> one batch of ops (frames + 20
+frames of pixels + durations + tags) -> inspect QC -> per-pixel verification ->
+package.
 
-用法（在仓库任意位置）：
-  python demo/slime_devourer/generator/produce.py             # 全流程
-  python demo/slime_devourer/generator/produce.py --preview   # 只出本地接触表，不启动 Aseprite
-需要 ASEPRITE_PATH 指向可执行的 Aseprite（否则依赖自动探测）。
+Usage (from anywhere in the repo):
+  python demo/slime_devourer/generator/produce.py             # full pipeline
+  python demo/slime_devourer/generator/produce.py --preview   # local contact sheet, no Aseprite
+ASEPRITE_PATH must point at a runnable Aseprite (otherwise auto-detection is used).
 
-流程刻意只用 v2 工具面：
-- create_sprite / add_frames / paint_grid / set_durations / add_tag / save_sprite 全在
-  **一个 apply_operations 原子批量**里 = 一次 Aseprite 进程（20 帧各一个 paint_grid）；
-- 网格文件写进会话工作目录，所以 paint_grid 免 confirmed=true（见 AGENTS.md 的门闩约定）；
-- inspect 只读回读结构与逐帧指标（多帧文档它自己会压成单帧再导出，frame 参数选帧），
-  美术质检就是照着它的 metrics 做的；
-- run_lua 只用来导出（精灵表 + 逐帧 PNG）——工具面没有 export op，这是正当的逃逸舱用途。
+The flow deliberately uses only the v2 tool surface:
+- create_sprite / add_frames / paint_grid / set_durations / add_tag / save_sprite
+  all live in **one atomic apply_operations batch** = one Aseprite process (one
+  paint_grid per frame, 20 in total);
+- the grid files go into the session working directory, so paint_grid needs no
+  confirmed=true (see the gate convention in AGENTS.md);
+- inspect only reads back the structure and per-frame metrics (for multi-frame
+  documents it collapses to a single frame before exporting, and the frame param
+  picks the frame); the art QC is built on its metrics;
+- run_lua is used for export only (sprite sheet + per-frame PNGs) -- the tool
+  surface has no export op, which is a legitimate use of the escape hatch.
 """
 
 import asyncio
@@ -27,8 +33,8 @@ import monster as mo
 
 HERE = Path(__file__).parent                 # demo/slime_devourer/generator
 DEMO = HERE.parent                           # demo/slime_devourer
-BUILD = HERE / ".build"                      # 中间产物，已 gitignore
-ROOT = HERE.parents[2]                       # 仓库根（server.py 所在处）
+BUILD = HERE / ".build"                      # intermediate artifacts, gitignored
+ROOT = HERE.parents[2]                       # repo root (where server.py lives)
 
 PHASES = len(mo.PHASES)
 DIRS = mo.DIRS
@@ -39,12 +45,13 @@ ASE_NAME = "slime_devourer_devour.ase"
 GIF_SCALE = 4
 PREVIEW_SCALE = 6
 
-DUR = mo.frame_durations()                   # 20 帧的逐帧时长（秒），五个相位循环
+DUR = mo.frame_durations()                   # per-frame durations (seconds), five phases cycling
 TAGS = {d: (DIRS.index(d) * PHASES + 1, DIRS.index(d) * PHASES + PHASES) for d in DIRS}
 
 
 def _expected(grid) -> Image.Image:
-    """设计矩阵 -> PIL 期望图（'.' 透明，其余查调色板）。"""
+    """Design matrix -> expected PIL image ('.' is transparent, the rest looks up in
+    the palette)."""
     img = Image.new("RGBA", (mo.W, mo.H), (0, 0, 0, 0))
     for y, row in enumerate(grid):
         for x, code in enumerate(row):
@@ -64,7 +71,7 @@ async def produce():
 
     (BUILD / "frames").mkdir(parents=True, exist_ok=True)
     for stale in (BUILD / "frames").glob("frame*.png"):
-        stale.unlink()          # 上一版脚本按 frame.png -> frameN.png 落盘，别混进来
+        stale.unlink()          # old script wrote frame.png -> frameN.png; drop them
 
     env = {**os.environ, "ASEPRITE_WORK_DIR": str(BUILD / "work"),
            "ASEPRITE_MCP_MODE": "cli"}
@@ -78,7 +85,8 @@ async def produce():
         assert r["ok"], r["error"]
         sid = r["session_id"]
 
-        # 网格文件放进会话工作目录：paint_grid 因此免确认
+        # Grid files go into the session working dir: paint_grid therefore needs
+        # no confirmation.
         grids = []
         for d in DIRS:
             for p in range(PHASES):
@@ -103,7 +111,8 @@ async def produce():
         print(f"monster: {len(ops)} ops in one atomic batch, {r['timing_ms']}ms, "
               f"warnings={r['warnings'] or 'none'}")
 
-        # ---------------- inspect：结构与指标（旧版这里的 run_lua PROBE 是绕 bug 的，已撤） ----------------
+        # ---------------- inspect: structure and metrics ----------------
+        # (the old run_lua PROBE here worked around a bug and is gone)
         seen = []
         for i in range(1, FRAMES + 1):
             res = (await c.call_tool("inspect", {"session_id": sid, "frame": i})).structured_content
@@ -114,7 +123,7 @@ async def produce():
               f"tags={[t['name'] for t in meta['tags']]}, "
               f"max {max(m['color_count'] for _, _, m in seen)} colors")
 
-        # ---------------- 导出（run_lua 唯一的用途） ----------------
+        # ---------------- export (the only use of run_lua) ----------------
         export = f"""
 local s = app.activeSprite
 app.command.ExportSpriteSheet({{
@@ -125,8 +134,8 @@ app.command.ExportSpriteSheet({{
   dataFilename = "{(BUILD / 'monster_data.json').as_posix()}",
   dataFormat = SpriteSheetDataFormat.JSON_HASH,
 }})
--- 多帧文档上直接 saveCopyAs 会写成 frame1.png..frameN.png 却拿不到确切文件名，
--- 所以每帧先拷一个临时单帧文档再删掉其余帧（与 grassland_q 的导出同一个写法）。
+-- On a multi-frame document saveCopyAs writes frame1.png..frameN.png and the exact name is not knowable,
+-- so each frame is copied into a temporary single-frame document first - the same trick inspect.lua uses.
 for i = 1, #s.frames do
   local copy = Sprite(s)
   for j = #copy.frames, 1, -1 do
@@ -148,17 +157,17 @@ print("EXPORT frames=" .. #s.frames)
     return seen
 
 
-# ---------------------------------------------------------------- 质检与校验
+# ---------------------------------------------------------------- QC and verification
 def _mask(grid):
     return {(x, y) for y, row in enumerate(grid) for x, c in enumerate(row) if c != "."}
 
 
 def qa(seen) -> list[str]:
-    """照 inspect 的 metrics 做美术质检；返回缺陷清单（空 = 全绿）。"""
+    """Art QC driven by inspect's metrics; returns the defect list (empty = all green)."""
     bad = []
     for i, _meta, m in seen:
         d, p = DIRS[(i - 1) // PHASES], (i - 1) % PHASES
-        if m["isolated_pixels"]:          # 黏液怪身上孤立像素 = 脏点
+        if m["isolated_pixels"]:          # an isolated pixel on a slime is a speck
             bad.append(f"frame {i} {d}/{mo.PHASES[p]}: "
                        f"{m['isolated_pixels']} isolated pixels")
         if m["near_duplicate_colors"]:
@@ -168,12 +177,14 @@ def qa(seen) -> list[str]:
             bad.append(f"frame {i} {d}/{mo.PHASES[p]}: "
                        f"{m['semi_transparent_pixels']} semi-transparent pixels")
         b = m["bbox"]
-        # 剪影不许贴画布边：贴上去的那一行描边等于被画布切掉，导出后就是缺角
+        # The silhouette may not hug the canvas edge: an outline on the edge is
+        # clipped by the canvas, so the export loses a corner.
         if (b["x"] < 1 or b["y"] < 1
                 or b["x"] + b["width"] > mo.W - 1 or b["y"] + b["height"] > mo.H - 1):
             bad.append(f"frame {i} {d}/{mo.PHASES[p]}: bbox {b} touches the canvas edge")
 
-    # 时长：回读值必须与逐帧设计一致，而且五个相位两两不同（GIF 要保住节奏）
+    # Durations: the read-back must match the per-frame design, and the five
+    # phases must be pairwise distinct (the GIF must keep its rhythm).
     got = [f["duration"] for _, meta, _ in seen for f in meta["frames"]]
     for i, (want, real) in enumerate(zip(DUR, got), start=1):
         if abs(want - real) > 0.005:
@@ -184,8 +195,9 @@ def qa(seen) -> list[str]:
     def at(d, p):
         return seen[mo.frame_index(d, p) - 1][2]
 
-    # 体积曲线：蓄力压扁 / 突进拉长 / 咬合收缩 / 吞咽鼓包
-    # （吞咽允许比突进更高——那一口猎物把轮廓顶起来，所以拉长只对前四相比）
+    # Volume curve: windup squashes / lunge stretches / chomp contracts / swallow bulges
+    # (swallow may be taller than the lunge -- that mouthful lifts the silhouette, so
+    # the stretch check only compares the first four phases)
     for d in DIRS:
         curve = [at(d, p) for p in range(PHASES)]
         box = [m["bbox"] for m in curve]
@@ -201,8 +213,9 @@ def qa(seen) -> list[str]:
         if not (height[4] >= height[0] and cov[4] >= cov[0]):
             bad.append(f"{d}: swallow gains no bulk")
 
-    # 方向自洽：right 的剪影是 left 的水平镜像（尺寸/面积相同、bbox 对称），
-    # 明暗仍按固定左上算，所以不能要求整帧像素相等。
+    # Direction consistency: right's silhouette is left mirrored horizontally (same
+    # size/area, symmetric bbox), while shading still comes from a fixed upper left,
+    # so whole-frame pixel equality cannot be required.
     for p in range(PHASES):
         L, R = _mask(mo.build("left", p)), _mask(mo.build("right", p))
         mirrored = {(mo.W - 1 - x, y) for x, y in L}
@@ -211,7 +224,8 @@ def qa(seen) -> list[str]:
             bad.append(f"phase {mo.PHASES[p]}: right is not the mirrored silhouette of left")
         if ml["x"] + mr["x"] + mr["width"] != mo.W:
             bad.append(f"phase {mo.PHASES[p]}: mirrored bbox x is off {ml} / {mr}")
-        # 正视与背视在同一相位不该差出一截宽度（背视的下颌顶角只允许 +1px 半径）
+        # Front and back must not differ in width within a phase (the back jaw's
+        # pushed-out corner is allowed only +1px of radius).
         fu, bu = at("down", p)["bbox"], at("up", p)["bbox"]
         if fu["width"] != bu["width"] or fu["height"] != bu["height"]:
             bad.append(f"phase {mo.PHASES[p]}: front {fu} and back {bu} silhouettes disagree")
@@ -219,7 +233,8 @@ def qa(seen) -> list[str]:
 
 
 def verify() -> bool:
-    """逐像素比对 Aseprite 落盘结果与 Python 侧的设计矩阵。"""
+    """Pixel comparison of Aseprite's written output against the Python-side design
+    matrix."""
     ok = True
     for d in DIRS:
         for p in range(PHASES):
@@ -237,9 +252,10 @@ def verify() -> bool:
     return ok
 
 
-# ---------------------------------------------------------------- 打包
+# ---------------------------------------------------------------- packaging
 def _publish(save, dest: Path, *, attempts: int = 6, pause: float = 0.5):
-    """先写临时文件再 os.replace 覆盖：目标 gif 可能正被看图工具占用。"""
+    """Write a temp file first, then overwrite with os.replace: the target gif may
+    be held open by an image viewer."""
     tmp = dest.with_name(f"{dest.stem}.part{dest.suffix}")
     for attempt in range(attempts):
         try:
@@ -263,7 +279,7 @@ def _save(img, dest: Path, **kwargs):
 
 
 def package():
-    """四个方向各一条 GIF（保留逐帧时长）+ 精灵表 + .ase。"""
+    """One GIF per direction (keeping per-frame durations) + sprite sheet + .ase."""
     for d in DIRS:
         cells = [Image.open(_frame_png(mo.frame_index(d, p))).convert("RGBA")
                  .resize((mo.W * GIF_SCALE, mo.H * GIF_SCALE), Image.NEAREST)
@@ -273,15 +289,16 @@ def package():
               duration=[int(x * 1000) for x in mo.PHASE_DUR], loop=0,
               optimize=True, disposal=2)
         saved = Image.open(dest)
-        # GIF 编码器会合并完全相同的帧，逐帧时长也可能被量化：两条都要断言。
+        # The GIF encoder merges identical frames and may quantize per-frame
+        # durations: assert both.
         durs = []
         for i in range(saved.n_frames):
             saved.seek(i)
             durs.append(saved.info.get("duration"))
         assert saved.n_frames == PHASES, \
-            f"{dest.name} 只有 {saved.n_frames} 帧：帧被 GIF 编码器合并了"
+            f"{dest.name} has only {saved.n_frames} frames: frames were merged by the GIF encoder"
         assert durs == [int(x * 1000) for x in mo.PHASE_DUR], \
-            f"{dest.name} 的逐帧时长丢了：{durs}"
+            f"{dest.name} lost its per-frame durations: {durs}"
         print(" ", dest.name, saved.size, saved.n_frames, "frames", durs)
 
     _copy(BUILD / "monster_sheet.png", DEMO / SHEET_NAME)
@@ -291,7 +308,8 @@ def package():
 
 
 def preview(scale: int = PREVIEW_SCALE) -> Path:
-    """本地接触表：4 行（方向）x 5 列（相位），不经过 Aseprite，调形用。"""
+    """Local contact sheet: 4 rows (directions) x 5 columns (phases), without
+    Aseprite, for shaping."""
     bg = (28, 30, 26)
     sheet = Image.new("RGB", (mo.W * scale * PHASES, mo.H * scale * len(DIRS)), bg)
     for r, d in enumerate(DIRS):
@@ -306,7 +324,8 @@ def preview(scale: int = PREVIEW_SCALE) -> Path:
 
 
 def _volume_table(seen):
-    """把 inspect 回读的 bbox/coverage 排成体积曲线表（四个方向 x 五个相位）。"""
+    """Lay out inspect's read-back bbox/coverage as a volume-curve table (four
+    directions x five phases)."""
     print("  phase       down(front)    left           right          up(back)")
     for p in range(PHASES):
         cells = []

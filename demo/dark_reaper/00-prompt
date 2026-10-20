@@ -1,11 +1,11 @@
-使用Asepritemcp，
-生成像素艺术精灵表，
-展示一位身披破烂黑袍的暗黑死神，手持巨型镰刀，兜帽下一双发光的红眼，
-四方向行走循环，分别为向下、向上、向左、向右，每个方向包含6帧动画，
-游戏素材，2D，32X32大小，扁平色彩，透明背景，精灵表布局。
-占满画布，1px 深色描边，光源统一在左上。
-死神没有腿，靠袍摆下缘的行波涟漪、整体起伏和露出的骨脚交替来读"走"。
-完成后，输出对应png，ase文件。
+Use Aseprite MCP,
+generate a pixel art sprite sheet
+showing a dark reaper wrapped in a tattered black robe, holding a giant scythe, a pair of glowing red eyes under the hood,
+four-direction walk cycle — down, up, left, right — 6 frames of animation per direction,
+game asset, 2D, 32X32, flat colors, transparent background, sprite sheet layout.
+Fill the canvas, 1px dark outline, light consistently from the top-left.
+The reaper has no legs; the walk reads through a travelling ripple along the lower edge of the robe hem, an overall bob, and the alternating glimpses of bone feet.
+When done, output the matching png and ase files.
 
 
-把那个死神上、下、左、右的循环动画分别导出为对应的gif动图，共四个。
+Export the reaper's up, down, left, right loop animations as matching gif files, four in total.

@@ -1,78 +1,93 @@
-# dark_reaper 生成器
+# dark_reaper generator
 
-32x32 暗黑死神，4 方向 x 6 帧行走循环。
+32x32 dark reaper, 4 directions x 6 frames walk cycle.
 
 ```bash
 export ASEPRITE_PATH=/path/to/aseprite.exe
-python produce.py          # 建会话 -> 一个原子批量画完 24 帧 -> 逐帧质检 -> 逐像素校验 -> 打包
-python reaper.py           # 不碰 Aseprite，只看 ASCII
-python reaper.py --sheet   # 本地接触表 .build/reaper_sheet.png
+python produce.py          # create session -> one atomic batch draws all 24 frames -> per-frame QA -> per-pixel verification -> package
+python reaper.py           # does not touch Aseprite, ASCII only
+python reaper.py --sheet   # local contact sheet .build/reaper_sheet.png
 ```
 
-产物写到上级 `demo/dark_reaper/`：`dark_reaper_walk_{down,left,right,up}.gif`（4x，每个 6 帧）、
-`dark_reaper_spritesheet.png`（192x128）、`dark_reaper_walk.ase`（24 帧 + 4 个
-`walk_*` tag）。中间产物在 `.build/`（已 gitignore）。
+Outputs go to the parent `demo/dark_reaper/`: `dark_reaper_walk_{down,left,right,up}.gif` (4x, 6 frames
+each), `dark_reaper_spritesheet.png` (192x128), `dark_reaper_walk.ase` (24 frames + 4 `walk_*` tags).
+Intermediate files live in `.build/` (gitignored).
 
-## 画这 24 帧只用 v2 工具面
+## These 24 frames use only the v2 tool surface
 
-| | 旧（op 注册表还不能扩帧时） | 现在 |
+| | Old (when the op registry could not add frames yet) | Now |
 | --- | --- | --- |
-| 建结构 | `run_lua` 手写 Lua：`newFrame` / 建空 cel / 设 duration / `newTag` | `add_frames` + `set_durations` + 4x `add_tag` |
-| 像素 | 4616 个 `draw_rect`，分 4 批，`timing_ms` 合计 1332ms | 24 个 `paint_grid`（一帧一个），与结构同一个批量 |
-| 一次画完要几个 op / 几次 Aseprite 进程 | 4618 op / 7 次（建会话、建结构、4 批像素、保存） | **31 op / 1 次**，`timing_ms` 实测 371-673ms、零警告 |
+| Structure | `run_lua` with hand-written Lua: `newFrame` / create empty cels / set duration / `newTag` | `add_frames` + `set_durations` + 4x `add_tag` |
+| Pixels | 4616 `draw_rect` ops in 4 batches, `timing_ms` totalling 1332ms | 24 `paint_grid` ops (one per frame), in the same batch as the structure |
+| Ops / Aseprite processes for one full draw | 4618 ops / 7 processes (create session, build structure, 4 pixel batches, save) | **31 ops / 1 process**, measured `timing_ms` 371-673ms, zero warnings |
 
-那 31 个 op 是一个原子批量：`add_frames{count: 23}` → 24x `paint_grid` →
-`set_durations{[0.12] * 24}` → 4x `add_tag` → `save_sprite`。
-`add_frames` 必须排在 `paint_grid` 前面：新文档只有 1 帧，op 会自动补 cel，但**不会**自动补帧。
+Those 31 ops form one atomic batch: `add_frames{count: 23}` → 24x `paint_grid` →
+`set_durations{[0.12] * 24}` → 4x `add_tag` → `save_sprite`.
+`add_frames` must come before `paint_grid`: a new document has only 1 frame; the op auto-creates cels,
+but it **does not** auto-create frames.
 
-- 每帧一个 Lua 网格文件（`reaper.py` 的 `grid_lua()`，行是字符串、`.` 是透明），
-  写进**会话工作目录** `<.build>/work/sessions/<session_id>/reaper_NN.lua`，
-  所以 `paint_grid` 免 `confirmed=true` —— 见 `AGENTS.md` 的门闩约定：文件在工作目录内即视为可信输入。
-- `run_lua` 只剩导出（`ExportSpriteSheet` + `saveCopyAs`）：工具面没有 export op，
-  这是逃逸舱的正当用途。多帧文档上 `saveCopyAs("frame.png")` 会写成 `frame1.png…frame24.png`
-  （永远不会写 `frame.png`），逐帧校验吃的就是这 24 个文件。
+- One Lua grid file per frame (`reaper.py`'s `grid_lua()`; rows are strings, `.` is transparent), written
+  into the **session work directory** `<.build>/work/sessions/<session_id>/reaper_NN.lua`, so `paint_grid`
+  is exempt from `confirmed=true` — see the gate convention in `AGENTS.md`: a file inside the work
+  directory counts as trusted input.
+- `run_lua` is left with only the export (`ExportSpriteSheet` + `saveCopyAs`): the tool surface has no
+  export op, and this is a legitimate use of the escape hatch. On a multi-frame document
+  `saveCopyAs("frame.png")` writes `frame1.png…frame24.png` (it never writes `frame.png`), and those 24
+  files are exactly what the per-frame verification consumes.
 
-## 质检是指标，不是"没报错"
+## QA is metrics, not "no errors reported"
 
-`produce.py` 先对 24 帧逐帧 `inspect`（24 次无头进程，实测约 6s，是脚本里最贵的一段；
-全程约 20-23s，比旧版的 16.5s 慢，慢就慢在质检从"只看第 1 帧"变成"每帧都看"），
-任一条不达标就失败、不打包；然后才把导出帧与 Python 侧设计网格逐像素比对（24/24 帧 0 像素差）。
-每帧还顺带核对文档级事实：`frames_total == 24`、tag 列表 == `walk_down/left/right/up`
-（`inspect` 只读，但万一哪天它改动原文档，这里就会响）。GIF 侧另有断言：每方向 6 帧两两不同，
-否则编码器会静默合并相同帧。
+`produce.py` first runs `inspect` frame by frame over all 24 frames (24 headless processes, about 6s
+measured — the most expensive stretch of the script; the whole run takes about 20-23s, slower than the
+old version's 16.5s, and the slowdown is exactly QA going from "only look at frame 1" to "look at every
+frame"), and fails without packaging if any check misses; only then does it compare the exported frames
+against the Python-side design grids pixel by pixel (0 differing pixels across 24/24 frames). Each frame
+also cross-checks document-level facts: `frames_total == 24` and the tag list == `walk_down/left/right/up`
+(`inspect` is read-only, but if it ever modifies the original document, this will fire). The GIF side has
+its own assertion: the 6 frames per direction are pairwise different, otherwise the encoder silently
+merges identical frames.
 
-这套指标在本机跑出来的两处硬伤，已经改回 `reaper.py` 的模型：
+The metrics turned up two hard defects on this machine, both fixed back in `reaper.py`'s model:
 
-- **`bbox` 底边**：迁移后第一次逐帧 inspect，16 帧是 30、8 帧（每方向第 5、6 帧）是 **32** ——
-  描边顶到画布最后一行。底边本该由"脚跟着地 + 袍摆"决定，跳下去的是镰刀：柄长 25/26 行，
-  而它随持握手泵动 ±2px，泵到底时柄底越过第 28 行，读出来是"镰刀在戳地板"而不是迈步。
-  把柄底收短 2 行（`scythe()` 里的 `shaft`，刃、持握手、泵动幅度一个像素没动），
-  24 帧底边恒为 30，袍摆下缘在 24..27 之间按波形平移 —— 这才是迈步。
-- **`palette` 里查不到红眼**：右视 6 帧的 `inspect` 调色板里没有 `#FF3B30`（`color_count` 10，
-  左视 12）—— 兜帽后缘那块 2x6 暗面（`rect(21, y+3, 2, 6, "D")`）与右视的眼睛同列，
-  把那双发光红眼整个涂掉了。在 `hood()` 里把这两行交换（暗面先画、眼睛后画），
-  右视重新有红眼，`color_count` 10 → 11。
-  左视的暗面在脑后（x=9-10），本来就不与眼睛争，所以这个坑只在镜像的那一侧咬人。
+- **`bbox` bottom edge**: on the first per-frame inspect after the migration, 16 frames read 30 and 8
+  frames (frames 5 and 6 of each direction) read **32** — the outline touched the last row of the canvas.
+  The bottom edge should be decided by "heel contact + robe hem"; what jumped down was the scythe: the
+  shaft is 25/26 rows long, and it pumps ±2px with the gripping hand; at the bottom of the pump the shaft
+  base crosses row 28, so it reads as "the scythe is poking the floor" rather than a step. Shortening the
+  shaft base by 2 rows (the `shaft` in `scythe()`; blade, gripping hand and pump amplitude untouched by a
+  single pixel) makes the bottom edge a constant 30 across 24 frames, with the robe hem sliding between
+  24..27 along the wave — that reads as stepping.
+- **Red eyes missing from the `palette`**: the `inspect` palette for the 6 right-facing frames had no
+  `#FF3B30` (`color_count` 10, versus 12 on the left) — a 2x6 dark patch on the hood's rear edge
+  (`rect(21, y+3, 2, 6, "D")`) shares a column with the right-facing eyes and painted the whole pair of
+  glowing red eyes over. Swapping those two lines in `hood()` (dark patch first, eyes after) brings the
+  red eyes back on the right, `color_count` 10 → 11. On the left the dark patch is behind the head
+  (x=9-10) and never competes with the eyes, so this pit only bites on the mirrored side.
 
-其余几条指标本来就是绿的，但断言留在脚本里当护栏：
+The remaining metrics were green from the start, but the assertions stay in the script as guard rails:
 
-- **`isolated_pixels` = 0**（24 帧全等）：袍、刃、描边都连通，没有噪点或断线。
-  以后加破布、飘带时这条最容易先炸。
-- **`near_duplicate_colors` = []**：14 色调色板两两通道差都 > 8，没有该合并的近似色。
-- **`coverage` 0.50-0.56**：占满画布，袍摆行波逐列最多差 1px、没有单列凸出的尖牙，
-  所以读作布料起伏而不是溶解。
+- **`isolated_pixels` = 0** (all 24 frames equal): robe, blade and outline are all connected, with no
+  noise or broken lines. This is the first check to blow when tattered cloth or ribbons are added later.
+- **`near_duplicate_colors` = []**: every pairwise channel difference in the 14-color palette is > 8;
+  there are no near colors that ought to be merged.
+- **`coverage` 0.50-0.56**: fills the canvas; the robe-hem travelling wave differs by at most 1px between
+  columns, with no single column spiking out, so it reads as cloth undulating rather than dissolving.
 
-## 没有腿怎么走
+## How it walks without legs
 
-死神全身罩袍，读不出迈腿，所以行走靠三件事叠出来：
+The reaper is covered by a robe from head to toe, so no leg-step reads; the walk is built from three
+things layered together:
 
-- **袍摆行波**：下缘每列的底边 `y = 基准 + round(1.0 · sin(0.5x + 2πt))`，
-  时间相位按帧推进，波纹就沿袍子横向流动。振幅压到 1px、波长放宽，
-  读作布料起伏而不是溶解。
-- **整体起伏** `bob`：接触拍下沉 1px。
-- **骨脚**：袍下露两点骨色，按 `swing` 反相抬落，是"迈腿"的直接线索。
-  两脚永远有一只踩在第 27-28 行，所以底线不动 —— 动的是袍。
+- **Robe-hem travelling wave**: the bottom edge of each column is `y = baseline + round(1.0 · sin(0.5x + 2πt))`;
+  the time phase advances per frame, so the ripple flows sideways along the robe. The amplitude is held at
+  1px and the wavelength widened, so it reads as cloth undulating rather than dissolving.
+- **Overall bob** (`bob`): sinks 1px on the contact frame.
+- **Bone feet**: two specks of bone color show below the robe, lifting and falling in anti-phase with
+  `swing` — the direct cue for "stepping". One foot is always planted on rows 27-28, so the baseline never
+  moves; what moves is the robe.
 
-镰刀是另一处坑：正/背视里刃必须朝身体**外侧**扫出，向内会横过脸把兜帽盖掉；
-侧视里刃朝前扫，靠抛物线下坠 + 由柄向刃尖收薄来铺，比采样圆弧更连续。
-逐帧核对过 24 帧的像素：刃口离眼睛最近的那一帧（右视）也还隔着镰柄那两列，从没横过兜帽。
+The scythe is another pit: in the front/back views the blade must sweep toward the body's **outside**;
+sweeping inward crosses the face and covers the hood. In the side view the blade sweeps forward, laid out
+by a parabolic droop plus a taper from shaft to tip, which is more continuous than sampling an arc. All 24
+frames were checked pixel by pixel: even the frame where the blade edge comes closest to the eyes (right
+view) still has the two shaft columns between them, and the blade never crosses the hood.

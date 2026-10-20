@@ -1,11 +1,13 @@
-"""Q 版骑士行走循环：32x32，4 方向 x 6 帧。
+"""Chibi knight walk cycle: 32x32, 4 directions x 6 frames.
 
-行走靠一组相位通道驱动：swing（腿部前后/上下摆动，反相双腿）、bob（接触拍身体
-下沉 1px）、sway（披风与盔缨甩动）。腿部摆幅刻意放大，因为素材最终按 4x 显示，
-1px 的动作在这个尺寸下读不出来。
+The walk is driven by a set of phase channels: swing (the legs swinging fore/aft
+and up/down, the two legs in antiphase), bob (the body sinking 1px on the contact
+beat), sway (the cape and plume whipping). The leg amplitude is deliberately
+exaggerated, because the asset is finally shown at 4x and 1px of motion is
+unreadable at that size.
 
-  python knight.py            # 打印 ASCII
-  python knight.py --sheet    # 本地接触表 .build/knight_sheet.png
+  python knight.py            # print the ASCII frames
+  python knight.py --sheet    # local contact sheet .build/knight_sheet.png
 """
 
 import math
@@ -17,17 +19,17 @@ DIRS = ["down", "left", "right", "up"]
 FRAMES = 6
 
 P = {
-    "s": "#DCE3EC",  # 亮银
-    "m": "#AAB6C4",  # 中银
-    "d": "#78838F",  # 暗银
-    "X": "#2B303B",  # 描边
-    "r": "#D94A3D",  # 披风/盔缨 亮红
-    "e": "#9E2F26",  # 披风暗部
-    "b": "#7A5230",  # 皮带
-    "n": "#4A3218",  # 靴子
-    "g": "#E0A93B",  # 金饰
-    "k": "#15181F",  # 观察缝
-    "w": "#F4F8FC",  # 高光
+    "s": "#DCE3EC",  # bright silver
+    "m": "#AAB6C4",  # mid silver
+    "d": "#78838F",  # dark silver
+    "X": "#2B303B",  # outline
+    "r": "#D94A3D",  # cape / plume, bright red
+    "e": "#9E2F26",  # cape shadow
+    "b": "#7A5230",  # belt
+    "n": "#4A3218",  # boots
+    "g": "#E0A93B",  # gold trim
+    "k": "#15181F",  # vision slit
+    "w": "#F4F8FC",  # highlight
 }
 
 G = []
@@ -65,7 +67,7 @@ def outline(c="X"):
 
 
 def shine():
-    """左上受光：色块左上边缘提亮一档。"""
+    """Light from the upper left: lift the block's upper-left edge one step."""
     for y in range(1, H):
         for x in range(1, W):
             c = G[y][x]
@@ -77,29 +79,32 @@ def shine():
 
 def phase(i):
     s = math.sin(2 * math.pi * i / FRAMES)
-    # 布料半帧滞后（follow-through）。纯正弦按 6 点均匀采样是对称的，
-    # 会有两对帧量化后完全相同、被 GIF 编码器合并；滞后的 drag 打破这个简并。
+    # Cloth lags half a frame (follow-through). A pure sine sampled evenly at 6
+    # points is symmetric, so two pairs of frames quantize to the same pose and
+    # the GIF encoder merges them; the lagging drag breaks that degeneracy.
     drag = math.sin(2 * math.pi * (i - 0.5) / FRAMES)
     return dict(swing=s, bob=int(round(abs(s))), sway=int(round(s * 2)),
                 drag=drag, drag_sway=int(round(drag * 2)))
 
 
-# ---------------------------------------------------------------- 部件
+# ---------------------------------------------------------------- parts
 
 def legs(d, ph):
     s = ph["swing"]
     for name, sign in (("a", 1), ("b", -1)):
-        v = s * sign                      # -1..1，正=这条腿在前
+        v = s * sign                      # -1..1, positive = this leg is forward
         front = v > 0.2
         if d in ("down", "up"):
-            # 正视/背视的腿组必须关于画布中心 15.5 对称：11..14 与 16..19
+            # Front/back leg groups must be symmetric about canvas centre 15.5:
+            # 11..14 and 16..19.
             x0 = (11 if name == "a" else 16) + int(round(v))
             y0 = 21 - (2 if front else 0)
             rect(x0, y0, 4, 5, "m" if front else "d")
             rect(x0, y0 + 5, 4, 2, "n" if front else "X")
         else:
             back = -1 if d == "left" else 1
-            # 侧视同理：左右两向的摆动轴相差 1（13 / 14），否则右向整组腿偏左 1px
+            # Same for side views: the swing axis differs by 1 between the two
+            # directions (13 / 14), otherwise the right-facing legs all shift 1px left.
             x0 = (13 if d == "left" else 14) + int(round(v * 4)) * back
             y0 = 21 - (1 if front else 0)
             rect(x0, y0, 5, 5, "m" if front else "d")
@@ -137,7 +142,8 @@ def torso(d, ph):
         x0 = 10 if d == "left" else 11
         rect(x0, y, 11, 9, "m")
         rect(x0, y + 7, 11, 1, "g")
-        # 胸甲高光贴在身体正面：左向 10..12，右向镜像过来是 19..21
+        # The chest highlight sits on the front of the body: 10..12 facing left,
+        # mirrored to 19..21 facing right.
         chest = 10 if d == "left" else 19
         rect(chest, y + 1, 3, 5, "s")
 
@@ -174,11 +180,12 @@ def head(d, ph):
         ell(16, y + 6, 7.0, 6.2, "m")
         rect(10 if d == "left" else 13, y + 5, 9, 5, "m")
         rect(11 if d == "left" else 17, y + 2, 4, 2, "s")
-        # 观察缝必须留在头盔正脸内：右向 18..21（镜像自左向 10..13），
-        # 原来的 20..23 会被剑刃（x=22,23）盖掉半条缝。
+        # The vision slit must stay inside the helmet's face: 18..21 facing right
+        # (mirrored from 10..13 facing left). The old 20..23 had half the slit
+        # covered by the blade (x=22,23).
         slit = 10 if d == "left" else 18
         rect(slit, y + 7, 4, 2, "k")
-        rect(9 if d == "left" else 21, y + 4, 2, 3, "d")   # 后脑/面颊护板
+        rect(9 if d == "left" else 21, y + 4, 2, 3, "d")   # back of head / cheek guard
 
 
 def plume(d, ph):
@@ -197,7 +204,8 @@ def plume(d, ph):
 
 
 def sword(d, ph):
-    """剑随持剑手整体平移，不能只动护手——否则剑会被拉长。"""
+    """The sword translates as a whole with the sword hand; moving only the guard
+    would stretch the blade."""
     y = ph["bob"]
     s = int(round(ph["swing"] * 2))
     if d == "down":
@@ -216,7 +224,8 @@ def sword(d, ph):
         x, top, guard = (8 if d == "left" else 22), 4 + y - s, 18 + y - s
         rect(x, top, 2, guard - top, "s")
         rect(x, top, 1, guard - top, "w")
-        # 护手以剑刃为中轴向两侧各出 1px（右向曾经只往右出，整把剑看起来偏了）
+        # The guard extends 1px each side of the blade axis (facing right it once
+        # extended only to the right, which made the whole sword look off-centre).
         rect(x - 1, guard, 4, 1, "g")
         rect(x, guard + 1, 2, 3, "b")
 
@@ -239,15 +248,16 @@ def frame_index(d, i):
 
 
 def grid_rows(d, i):
-    """build() 的字符网格 -> paint_grid 的字符串行（'.' 表示透明，跳过不画）。"""
+    """build()'s character grid -> paint_grid string rows ('.' = transparent, skipped)."""
     return ["".join(c or "." for c in row) for row in build(d, i)]
 
 
 def grid_lua(d, i):
-    """paint_grid 吃的 Lua 数据文件内容。
+    """The Lua data file that paint_grid consumes.
 
-    不是 JSON：这个 build 的 json.decode 返回 userdata，pairs()/# 都用不了，
-    所以网格只能作为 dofile 的 Lua 表文件交给 op。调色板只写这一帧真正用到的键。
+    Not JSON: in this build json.decode returns userdata, so pairs()/# do not work
+    and the grid can only reach the op as a Lua table file loaded with dofile. The
+    palette only carries the keys this frame actually uses.
     """
     rows = grid_rows(d, i)
     used = sorted({key for row in rows for key in row if key != "."})
@@ -258,7 +268,7 @@ def grid_lua(d, i):
 
 
 def opaque_count(d, i):
-    """这一帧的不透明像素数：inspect 的 coverage 要按它来核对。"""
+    """Opaque pixel count of this frame: inspect's coverage is checked against it."""
     return sum(1 for row in build(d, i) for c in row if c)
 
 

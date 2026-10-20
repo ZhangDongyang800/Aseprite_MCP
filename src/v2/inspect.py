@@ -1,17 +1,20 @@
-"""感知指标：从导出的 PNG + Lua 元数据计算（spec §8）。
+"""Perception metrics computed from the exported PNG + Lua metadata (spec §8).
 
-指标全部走 PIL 的 C 实现：逐像素的 Python 循环会让 2048² 画布的单次 inspect 从毫秒级
-掉到十几秒，而"画完看一眼"是这个工具最频繁的调用。
+Every metric goes through PIL's C implementation: a per-pixel Python loop would drag a
+single inspect of a 2048² canvas from milliseconds to ten-plus seconds, and "draw, then
+take a look" is the most frequent call this tool gets.
 """
 
 from pathlib import Path
 
 from PIL import Image, ImageChops
 
-# 近重复色两两比较是 O(n²)：只对最常用的这些颜色做比较，像素画本来也用不了更多颜色。
+# Pairwise near-duplicate comparison is O(n²): only compare the most-used colors, and
+# pixel art does not use more colors than this anyway.
 NEAR_DUPLICATE_COLOR_LIMIT = 64
 NEAR_DUPLICATE_CHANNEL_DELTA = 8
-# 超过这个颜色数就不是像素画了（照片、噪点），此时退回量化调色板并标记为近似。
+# Past this color count it is no longer pixel art (photos, noise); fall back to a
+# quantized palette and flag the result as approximate.
 EXACT_COLOR_LIMIT = 2_000_000
 
 

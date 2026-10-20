@@ -1,6 +1,6 @@
-"""MCP Resources：只读数据源。
+"""MCP Resources: read-only data sources.
 
-提供会话列表、调色板、画布信息、混合模式列表等只读数据。
+Exposes the session list, palettes, canvas info, blend-mode list and other read-only data.
 """
 
 import json
@@ -8,7 +8,7 @@ import json
 from src.session import SessionManager
 
 
-# Aseprite 默认调色板（经典 16 色像素艺术调色板）
+# Aseprite's default palette (the classic 16-color pixel-art palette)
 _DEFAULT_PALETTE = [
     "#000000", "#1D2B53", "#7E2553", "#008751",
     "#AB5236", "#5F574F", "#C2C3C7", "#FFF1E8",
@@ -16,7 +16,7 @@ _DEFAULT_PALETTE = [
     "#29ADFF", "#83769C", "#FF77A8", "#FFCCAA",
 ]
 
-# 预设调色板库（docs §4.3，色值采用公开标准）
+# Preset palette library (docs §4.3; values follow the published standards)
 _PRESET_PALETTES = {
     "db16": {
         "name": "db16",
@@ -45,7 +45,8 @@ _PRESET_PALETTES = {
     "aap64": {
         "name": "aap64",
         "description": "AAP-64，Adigun Polack 设计的现代像素艺术 64 色标准",
-        # 色值来源：lospec.com/palette-list/aap-64（权威标准 64 色）
+        # Source of the values: lospec.com/palette-list/aap-64 (the authoritative
+        # 64-color standard)
         "colors": [
             "#060608", "#141013", "#3B1725", "#73172D",
             "#B4202A", "#DF3E23", "#FA6A0A", "#F9A31B",
@@ -92,7 +93,7 @@ _PRESET_PALETTES = {
     },
 }
 
-# 动画帧时长预设（docs §7.2，duration_ms 为建议值）
+# Animation frame-duration presets (docs §7.2; duration_ms is a suggested value)
 _TIMING_PRESETS = {
     "idle": {
         "type": "idle", "description": "待机呼吸",
@@ -132,7 +133,8 @@ _TIMING_PRESETS = {
     },
 }
 
-# 瓦片布局模板（docs §8.2/§8.3），grid/colormap 可直接改写成 paint_grid 的网格文件
+# Tileset layout templates (docs §8.2/§8.3); grid/colormap can be rewritten as-is into a
+# paint_grid grid file
 _TILESET_TEMPLATES = {
     "grass_dirt_16x16": {
         "name": "grass_dirt_16x16",
@@ -208,7 +210,7 @@ _TILESET_TEMPLATES = {
     },
 }
 
-# 规范检查规则文档（docs §2/§4/§5/§7，供 AI 按需读取）
+# Standards check rules (docs §2/§4/§5/§7, read by the AI on demand)
 _STANDARDS = {
     "size": {
         "category": "size",
@@ -234,7 +236,7 @@ _STANDARDS = {
     },
 }
 
-# Aseprite 支持的所有混合模式
+# Every blend mode Aseprite supports
 _BLEND_MODES = [
     "normal", "multiply", "screen", "overlay", "darken", "lighten",
     "color_dodge", "color_burn", "hard_light", "soft_light",
@@ -242,10 +244,10 @@ _BLEND_MODES = [
     "hsl_hue", "hsl_saturation", "hsl_color", "hsl_luminosity",
 ]
 
-# 动画方向
+# Animation directions
 _ANI_DIRS = ["forward", "reverse", "ping_pong", "ping_pong_reverse"]
 
-# 像素艺术绘制技巧参考（基于专业游戏美术实践）
+# Pixel-art drawing tips (grounded in professional game-art practice)
 _PIXEL_ART_TIPS = {
     "basic_rules": [
         "使用有限调色板（4-8色），每种主色配阴影色和高光色——这是专业像素艺术的核心约束",
@@ -290,7 +292,7 @@ _PIXEL_ART_TIPS = {
     ],
 }
 
-# 常见像素角色的网格布局参考（LLM 可参考这些模式）
+# Grid layouts for common pixel-art subjects (the LLM can follow these patterns)
 _SPRITE_PATTERNS = {
     "mushroom_16x16": {
         "description": "蘑菇（16x16）",
@@ -346,33 +348,33 @@ _SPRITE_PATTERNS = {
 
 
 def register_resources(mcp, session_manager: SessionManager):
-    """注册 MCP Resources。
+    """Register the MCP resources.
 
     Args:
-        mcp: FastMCP 实例
-        session_manager: 会话管理器
+        mcp: FastMCP instance
+        session_manager: the session manager
     """
 
     @mcp.resource("aseprite://sessions")
     def list_sessions() -> str:
-        """列出当前所有活跃的绘制会话。"""
+        """List every active drawing session."""
         return json.dumps(session_manager.list_sessions())
 
     @mcp.resource("aseprite://palette/default")
     def get_default_palette() -> str:
-        """返回默认像素艺术调色板（16 色）。"""
+        """Return the default pixel-art palette (16 colors)."""
         return json.dumps({"colors": _DEFAULT_PALETTE})
 
     @mcp.resource("aseprite://palette/presets")
     def list_palette_presets() -> str:
-        """返回可用的预设调色板名称列表（docs §4.3）。"""
+        """Return the names of the available preset palettes (docs §4.3)."""
         return json.dumps({"presets": list(_PRESET_PALETTES.keys())})
 
     @mcp.resource("aseprite://palette/presets/{name}")
     def get_palette_preset(name: str) -> str:
-        """返回指定预设调色板的完整色值。
+        """Return the full color values of one preset palette.
 
-        可用: db16, db32, aap64, nes, gameboy
+        Available: db16, db32, aap64, nes, gameboy
         """
         preset = _PRESET_PALETTES.get(name)
         if not preset:
@@ -381,15 +383,15 @@ def register_resources(mcp, session_manager: SessionManager):
 
     @mcp.resource("aseprite://timing/presets")
     def list_timing_presets() -> str:
-        """返回动画帧时长预设类型列表（docs §7.2）。"""
+        """Return the animation frame-duration preset types (docs §7.2)."""
         return json.dumps({"presets": list(_TIMING_PRESETS.keys())})
 
     @mcp.resource("aseprite://timing/presets/{type}")
     def get_timing_preset(type: str) -> str:
-        """返回指定动画类型的帧时长预设。
+        """Return the frame-duration preset for one animation type.
 
-        可用: idle, walk, run, attack_windup, attack_hit, attack_recover,
-              jump_start, jump_apex, jump_land
+        Available: idle, walk, run, attack_windup, attack_hit, attack_recover,
+                   jump_start, jump_apex, jump_land
         """
         preset = _TIMING_PRESETS.get(type)
         if not preset:
@@ -398,32 +400,32 @@ def register_resources(mcp, session_manager: SessionManager):
 
     @mcp.resource("aseprite://canvas/{session_id}/info")
     def get_canvas_info_resource(session_id: str) -> str:
-        """获取指定会话的画布元数据。"""
+        """Return the canvas metadata of one session."""
         info = session_manager.get_canvas_info(session_id)
         return json.dumps(info)
 
     @mcp.resource("aseprite://blendmodes")
     def list_blend_modes() -> str:
-        """返回 Aseprite 支持的所有混合模式列表。"""
+        """Return every blend mode Aseprite supports."""
         return json.dumps({"blend_modes": _BLEND_MODES})
 
     @mcp.resource("aseprite://anidirs")
     def list_ani_dirs() -> str:
-        """返回 Aseprite 支持的所有动画方向列表。"""
+        """Return every animation direction Aseprite supports."""
         return json.dumps({"ani_dirs": _ANI_DIRS})
 
     @mcp.resource("aseprite://tips/{category}")
     def get_pixel_art_tips(category: str) -> str:
-        """获取像素艺术绘制技巧。
+        """Return pixel-art drawing tips.
 
-        可用分类: basic_rules, shading, outline, symmetry, animation, workflow
+        Available categories: basic_rules, shading, outline, symmetry, animation, workflow
         """
         tips = _PIXEL_ART_TIPS.get(category, [])
         return json.dumps({"category": category, "tips": tips})
 
     @mcp.resource("aseprite://patterns")
     def list_sprite_patterns() -> str:
-        """返回可用的精灵网格布局参考模板列表。"""
+        """Return the available sprite grid-layout reference templates."""
         patterns = {
             name: {"description": p["description"]}
             for name, p in _SPRITE_PATTERNS.items()
@@ -432,12 +434,14 @@ def register_resources(mcp, session_manager: SessionManager):
 
     @mcp.resource("aseprite://patterns/{name}")
     def get_sprite_pattern(name: str) -> str:
-        """获取指定精灵的完整网格布局参考（grid 行串 + colormap 字符→色值）。
+        """Return the full grid layout for one sprite (grid rows + colormap char->color).
 
-        画到画布上要经过 paint_grid：把 colormap 拆成 Lua 的 palette 表、
-        把 grid 按 "/" 拆成 rows 数组，写成一个返回该表的 .lua 文件，
-        再用 apply_operations 的 {"op": "paint_grid", "path": "<绝对路径>"} 载入。
-        paint_grid 的文件在工作目录内可直接跑，指向外部路径需 confirmed=true。
+        Getting it onto the canvas goes through paint_grid: split colormap into a Lua
+        palette table, split grid on "/" into a rows array, write them into a .lua file
+        returning that table, then load it with apply_operations'
+        {"op": "paint_grid", "path": "<absolute path>"}.
+        A paint_grid file inside the work directory runs as-is; a path pointing outside
+        needs confirmed=true.
         """
         pattern = _SPRITE_PATTERNS.get(name)
         if not pattern:
@@ -446,7 +450,7 @@ def register_resources(mcp, session_manager: SessionManager):
 
     @mcp.resource("aseprite://tileset/templates")
     def list_tileset_templates() -> str:
-        """返回可用的瓦片布局模板列表（docs §8.2）。"""
+        """Return the available tileset layout templates (docs §8.2)."""
         templates = {
             name: {"description": t["description"], "tile_size": t["tile_size"]}
             for name, t in _TILESET_TEMPLATES.items()
@@ -455,12 +459,13 @@ def register_resources(mcp, session_manager: SessionManager):
 
     @mcp.resource("aseprite://tileset/templates/{name}")
     def get_tileset_template(name: str) -> str:
-        """返回指定瓦片模板的完整 grid/colormap。
+        """Return the full grid/colormap of one tileset template.
 
-        与 aseprite://patterns/{name} 同样要改写成 paint_grid 的网格文件使用；
-        用 paint_grid 的 x/y 把单块瓦片摆到画布上对应的格子。
+        Like aseprite://patterns/{name} it has to be rewritten into a paint_grid grid
+        file; use paint_grid's x/y to place the single tile at the matching cell on the
+        canvas.
 
-        可用: grass_dirt_16x16, dungeon_16x16, water_grass_16x16
+        Available: grass_dirt_16x16, dungeon_16x16, water_grass_16x16
         """
         template = _TILESET_TEMPLATES.get(name)
         if not template:
@@ -469,9 +474,9 @@ def register_resources(mcp, session_manager: SessionManager):
 
     @mcp.resource("aseprite://standards/{category}")
     def get_standards(category: str) -> str:
-        """返回指定类别的规范检查规则（docs §2/§4/§5/§7）。
+        """Return the standards rules for one category (docs §2/§4/§5/§7).
 
-        可用: size, palette, timing, pixel_art
+        Available: size, palette, timing, pixel_art
         """
         std = _STANDARDS.get(category)
         if not std:

@@ -1,4 +1,4 @@
-"""Op 注册表：单一事实来源（spec §6.1）。"""
+"""Op registry: the single source of truth (spec §6.1)."""
 
 from dataclasses import dataclass
 from typing import Callable, Optional, Type

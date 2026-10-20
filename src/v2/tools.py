@@ -1,4 +1,4 @@
-"""v2 工具面（spec §5）。"""
+"""The v2 tool surface (spec §5)."""
 
 from pathlib import Path
 from typing import Optional
@@ -6,7 +6,7 @@ from typing import Optional
 from fastmcp.tools import ToolResult
 from fastmcp.utilities.types import Image
 
-import src.v2.ops  # noqa: F401  触发内置 op 注册
+import src.v2.ops  # noqa: F401  triggers registration of the built-in ops
 from src.v2.executor import Engine
 from src.v2.registry import REGISTRY
 from src.v2.result import Envelope, ErrorCode
@@ -58,19 +58,21 @@ def register_v2_tools(mcp, session_manager, runner, config):
         confirmed: bool = False,
         verbose: bool = False,
     ) -> Envelope:
-        """执行一批 Aseprite 操作（唯一变更入口）。
+        """Run a batch of Aseprite operations (the only mutation entry point).
 
-        如果 session_id 为空且首个 op 是 create_sprite/open_sprite，
-        会先创建会话再执行。destructive op 需要 confirmed=true。
+        When session_id is empty and the first op is create_sprite/open_sprite, a session
+        is created before the batch runs. Destructive ops require confirmed=true.
 
-        atomic=true（默认）失败即整体回滚；atomic=false 会保留已经成功的 op，
-        在 op_results 里逐项标出成败，并在 warnings 里说明本次是部分成功。
+        atomic=true (the default) rolls the whole batch back on failure; atomic=false keeps
+        the ops that already succeeded, spells out pass/fail per entry in op_results, and
+        adds a warning that this run was a partial success.
 
-        paint_grid 会 dofile 一个 Lua 网格文件：文件在服务器工作目录内可直接运行，
-        指向工作目录之外的路径需要 confirmed=true（与 run_lua 同等级的门闩）。
+        paint_grid dofiles a Lua grid file: a file inside the server work directory runs
+        as-is, a path outside it requires confirmed=true (the same gate as run_lua).
 
-        成功时 op_results 只保留服务器才知道的新信息（如 open_sprite 读到的实际尺寸），
-        回显入参的条目会被丢弃；要完整回显或 dry_run 的执行计划就用 verbose=true。
+        On success op_results keeps only what the server learned at runtime (e.g. the real
+        size open_sprite read); entries that merely echo the caller's params are dropped.
+        Use verbose=true to get the full echo or the dry_run execution plan.
         """
         if not ops:
             return Envelope.failure(
@@ -78,7 +80,7 @@ def register_v2_tools(mcp, session_manager, runner, config):
                 session_id=session_id, mode=config.mode,
             )
 
-        # 先校验再建 session：参数不合法时不泄漏工作目录
+        # Validate before creating a session: invalid params must not leak a work directory
         parsed, err = REGISTRY.validate(ops)
         if err is not None:
             return Envelope.failure(
@@ -86,7 +88,8 @@ def register_v2_tools(mcp, session_manager, runner, config):
                 session_id=session_id, mode=config.mode,
             )
 
-        # 确认门在建 session 之前：被拒的批量不得产生副作用
+        # Confirmation gate before the session exists: a rejected batch must have no side
+        # effects
         if not confirmed and any(spec.destructive for spec, _ in parsed):
             return Envelope.failure(
                 ErrorCode.CONFIRMATION_REQUIRED,
@@ -113,7 +116,8 @@ def register_v2_tools(mcp, session_manager, runner, config):
                         session_id=session_id, mode=config.mode,
                     )
 
-        # undo/redo 是元 op：只在单 op 批量中路由到引擎（不生成 Lua）
+        # undo/redo are meta ops: routed to the engine only as a single-op batch (no Lua
+        # is generated)
         meta = {spec.name for spec, _ in parsed} & {"undo", "redo"}
         if meta:
             if len(parsed) != 1:
@@ -166,12 +170,15 @@ def register_v2_tools(mcp, session_manager, runner, config):
         unsafe: bool = False,
         confirmed: bool = False,
     ) -> Envelope:
-        """执行任意 Lua（逃逸舱）。必须 unsafe=true 且 confirmed=true。
+        """Run arbitrary Lua (escape hatch). Requires unsafe=true and confirmed=true.
 
-        CLI 模式下与 op 批量同样受快照保护：snippet 失败会回滚文档，成功则把改前状态留作
-        undo 备份。Live(ws) 模式没有文件快照，snippet 失败能否回滚取决于 Aseprite 事务是否
-        可用，失败信封里会说明。
-        CLI 模式下每次调用都会重写 .ase，所以 changed 表示"文档被重写"而非"内容语义变化"。
+        In CLI mode the snippet gets the same snapshot protection as an op batch: a failing
+        snippet rolls the document back, a successful one keeps the pre-change state as the
+        undo backup. Live (ws) mode has no file snapshot, so whether a failed snippet can be
+        rolled back depends on Aseprite transactions being available; the failure envelope
+        says so.
+        In CLI mode every call rewrites the .ase, so changed means "the document was
+        rewritten", not "the content changed semantically".
         """
         if not unsafe:
             return Envelope.failure(
@@ -196,9 +203,10 @@ def register_v2_tools(mcp, session_manager, runner, config):
         view: str = "composite",
         frame: int = 1,
     ) -> ToolResult:
-        """返回画布预览与量化指标（只读，永不改动文档）。
+        """Return a canvas preview plus quantitative metrics (read-only; never edits).
 
-        动画文档用 frame（1 起）指定看哪一帧；越界由 Lua 侧夹到有效范围。
+        For animated documents, frame (1-based) picks which frame to look at; out-of-range
+        values are clamped on the Lua side.
         """
         import json
 

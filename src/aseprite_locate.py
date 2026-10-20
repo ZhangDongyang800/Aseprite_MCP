@@ -1,4 +1,4 @@
-"""跨平台定位 Aseprite 可执行文件。"""
+"""Locate the Aseprite executable across platforms."""
 
 import os
 import shutil
@@ -31,7 +31,7 @@ def _candidate_paths() -> list[Path]:
 
 
 def locate_aseprite() -> str | None:
-    """返回可执行文件路径；优先 ASEPRITE_PATH，然后 PATH，最后常见安装位置。"""
+    """Return the executable path: ASEPRITE_PATH first, PATH next, common installs last."""
     env = os.environ.get("ASEPRITE_PATH")
     if env and Path(env).exists():
         return env

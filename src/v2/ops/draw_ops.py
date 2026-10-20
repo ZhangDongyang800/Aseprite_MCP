@@ -1,4 +1,4 @@
-"""绘制 op 定义（第一批）。"""
+"""Drawing op definitions (first batch)."""
 
 from pydantic import BaseModel, ConfigDict, Field
 

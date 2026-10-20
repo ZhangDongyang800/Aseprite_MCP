@@ -1,7 +1,8 @@
-"""会话管理模块。
+"""Session management.
 
-每个会话对应一个独立的工作目录，包含一个 .ase 画布文件。
-会话通过 session_id（UUID）标识，支持创建、查询、销毁和超时清理。
+Every session owns an isolated work directory holding one .ase canvas file.
+Sessions are identified by session_id (a UUID) and can be created, looked up,
+closed and swept on timeout.
 """
 
 import re
@@ -19,38 +20,38 @@ _UUID_DIR = re.compile(
 
 @dataclass
 class SessionManager:
-    """管理绘制会话的生命周期。
+    """Manage the lifecycle of drawing sessions.
 
-    每个会话维护：
-    - session_id: UUID 字符串
-    - 工作目录: <work_dir>/sessions/<session_id>/
-    - .ase 文件: <工作目录>/canvas.ase
-    - 画布信息: width, height, color_mode
-    - 时间戳: created_at, last_activity
+    Each session keeps:
+    - session_id: UUID string
+    - work directory: <work_dir>/sessions/<session_id>/
+    - .ase file: <work directory>/canvas.ase
+    - canvas info: width, height, color_mode
+    - timestamps: created_at, last_activity
     """
 
     config: Config
 
-    # 内部会话存储：session_id → 会话数据字典
+    # In-memory session store: session_id -> session data dict
     _sessions: dict = field(default_factory=dict, init=False, repr=False)
 
     def create_session(
         self, width: int, height: int, color_mode: str = "rgb"
     ) -> str:
-        """创建新会话。
+        """Create a new session.
 
         Args:
-            width: 画布宽度（像素）
-            height: 画布高度（像素）
-            color_mode: 颜色模式（"rgb", "grayscale", "indexed"）
+            width: canvas width in pixels
+            height: canvas height in pixels
+            color_mode: color mode ("rgb", "grayscale", "indexed")
 
         Returns:
-            session_id: 新会话的 UUID 字符串
+            session_id: UUID string of the new session
         """
         session_id = str(uuid.uuid4())
         now = time.time()
 
-        # 创建工作目录
+        # Create the work directory
         work_dir = self.config.sessions_dir / session_id
         try:
             work_dir.mkdir(parents=True, exist_ok=True)
@@ -60,7 +61,7 @@ class SessionManager:
                 f"Set ASEPRITE_WORK_DIR to a writable, ASCII-only path."
             ) from exc
 
-        # 记录会话数据
+        # Record the session data
         self._sessions[session_id] = {
             "session_id": session_id,
             "work_dir": work_dir,
@@ -75,34 +76,34 @@ class SessionManager:
         return session_id
 
     def _get_session(self, session_id: str) -> dict:
-        """获取会话数据，更新最后活动时间。
+        """Fetch session data and refresh the last-activity timestamp.
 
         Args:
-            session_id: 会话 ID
+            session_id: session ID
 
         Returns:
-            会话数据字典
+            the session data dict
 
         Raises:
-            KeyError: 会话不存在时抛出
+            KeyError: when the session does not exist
         """
         if session_id not in self._sessions:
             raise KeyError(f"Session not found: {session_id}")
 
-        # 更新最后活动时间
+        # Refresh the last-activity timestamp
         self._sessions[session_id]["last_activity"] = time.time()
         return self._sessions[session_id]
 
     def get_work_dir(self, session_id: str) -> Path:
-        """获取会话的工作目录路径。"""
+        """Return the session's work directory."""
         return self._get_session(session_id)["work_dir"]
 
     def get_ase_path(self, session_id: str) -> Path:
-        """获取会话的 .ase 画布文件路径。"""
+        """Return the session's .ase canvas file path."""
         return self._get_session(session_id)["ase_path"]
 
     def get_canvas_info(self, session_id: str) -> dict:
-        """获取画布元数据。"""
+        """Return the canvas metadata."""
         session = self._get_session(session_id)
         return {
             "width": session["width"],
@@ -113,45 +114,45 @@ class SessionManager:
     def update_canvas_info(
         self, session_id: str, width: int, height: int
     ) -> None:
-        """更新会话的画布尺寸缓存。
+        """Refresh the session's cached canvas size.
 
-        用于 import_png 等场景：从外部文件导入后，实际尺寸可能与
-        创建会话时的占位尺寸不同，需要用真实尺寸刷新缓存，
-        保证后续 get_canvas_info 返回正确值。
+        For flows like import_png: after importing an external file the real dimensions
+        can differ from the placeholder size the session was created with, so the cache
+        is refreshed to keep get_canvas_info returning the right values.
 
         Args:
-            session_id: 会话 ID
-            width: 真实画布宽度（像素）
-            height: 真实画布高度（像素）
+            session_id: session ID
+            width: real canvas width in pixels
+            height: real canvas height in pixels
         """
         session = self._get_session(session_id)
         session["width"] = width
         session["height"] = height
 
     def close_session(self, session_id: str) -> None:
-        """关闭会话，删除工作目录。
+        """Close a session and delete its work directory.
 
         Args:
-            session_id: 会话 ID
+            session_id: session ID
 
         Raises:
-            KeyError: 会话不存在时抛出
+            KeyError: when the session does not exist
         """
         session = self._get_session(session_id)
         work_dir = session["work_dir"]
 
-        # 删除工作目录
+        # Delete the work directory
         if work_dir.exists():
             shutil.rmtree(work_dir, ignore_errors=True)
 
-        # 从内存中移除
+        # Drop it from the in-memory registry
         del self._sessions[session_id]
 
     def list_sessions(self) -> list[dict]:
-        """列出所有活跃会话。
+        """List every active session.
 
         Returns:
-            会话信息列表，每项包含 session_id, width, height, color_mode
+            list of session info dicts, each with session_id, width, height, color_mode
         """
         result = []
         for session_id, data in self._sessions.items():

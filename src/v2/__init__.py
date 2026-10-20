@@ -1,9 +1,9 @@
-"""Aseprite MCP v2 内核包。"""
+"""Aseprite MCP v2 kernel package."""
 
-# 由 Task 0.2 的能力探测决定(fastmcp 4.0.5 实测,见
+# Settled by the capability probe in Task 0.2 (measured against fastmcp 4.0.5, see
 # tests/v2/test_fastmcp_capabilities.py):
-# 工具可以返回 fastmcp.tools.ToolResult(
+# a tool may return fastmcp.tools.ToolResult(
 #     content=[Image(...)], structured_content={...}
-# ),客户端单次 call_tool 同时收到 ImageContent 与结构化 dict。
-# 因此 v2 inspect 工具采用 "tool_result" 同返模式。
+# ), and a single client call_tool receives both the ImageContent and the structured
+# dict. That is why the v2 inspect tool uses the "tool_result" combined-response mode.
 IMAGE_STRUCTURED_MODE = "tool_result"

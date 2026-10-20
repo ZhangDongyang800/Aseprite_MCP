@@ -1,1 +1,1 @@
-# Aseprite MCP 服务器包
+# Aseprite MCP server package

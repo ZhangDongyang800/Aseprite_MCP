@@ -1,18 +1,18 @@
-"""WebSocket 桥接模块。
+"""WebSocket bridge.
 
-在 Python 端启动 WebSocket server，等待 Aseprite 扩展作为 client 连接。
-连接建立后，MCP 工具通过 WebSocket 向 Aseprite 发送脚本执行请求，
-Aseprite 执行后回传结果。
+Starts a WebSocket server on the Python side and waits for the Aseprite extension to
+connect as a client. Once connected, MCP tools send script-execution requests over the
+socket, and Aseprite sends the result back.
 
-架构：
+Architecture:
     ┌─────────┐    MCP(stdio)    ┌──────────────┐   WebSocket    ┌──────────────┐
-    │  AI/TRAE │ ───────────────► │ Python MCP   │ ─────────────► │ Aseprite 扩展 │
+    │  AI/TRAE │ ───────────────► │ Python MCP   │ ─────────────► │ Aseprite ext. │
     │          │ ◄─────────────── │ Server       │ ◄──────────── │ (ws client)  │
     └─────────┘                   └──────────────┘                └──────────────┘
 
-消息协议（基于文本行）：
-    请求（Python → Aseprite）: <id>\t<script_name>\t<lua_table_literal>
-    响应（Aseprite → Python）: <id>\t<success>\t<stdout_escaped>\t<stderr_escaped>
+Message protocol (line-based text):
+    Request (Python → Aseprite): <id>\t<script_name>\t<lua_table_literal>
+    Response (Aseprite → Python): <id>\t<success>\t<stdout_escaped>\t<stderr_escaped>
 """
 
 import asyncio
@@ -39,25 +39,25 @@ def _log(message: str) -> None:
 
 
 def params_to_lua(d: dict) -> str:
-    """将 Python dict 编码为 Aseprite 扩展可解析的键值对字符串。
+    """Encode a Python dict as key=value pairs the Aseprite extension can parse.
 
-    协议：每对参数编码为 key=value，对之间用制表符 \t 分隔。
-    因为消息整体按 \t 分隔，所以 key 和 value 内部的 \t 需要先转义。
-    支持的类型：bool、int、float、str、None。其他类型转为 str。
+    Protocol: each pair is encoded as key=value and pairs are separated by a tab. Because
+    the message itself is split on tabs, tabs inside keys and values have to be escaped
+    first. Supported types: bool, int, float, str, None. Anything else becomes str().
 
     Args:
-        d: 参数字典
+        d: parameter dict
 
     Returns:
-        编码后的参数字符串，如 'x=10\ty=20\tcolor=#FF0000'
+        the encoded parameter string, e.g. 'x=10\ty=20\tcolor=#FF0000'
     """
-    # 转义键和值中的特殊分隔符/转义符
-    # 转义规则（与 Lua 端一致）：
+    # Escape separators/escape characters inside keys and values.
+    # Escape rules (kept in sync with the Lua side):
     #   \  -> \\
     #   \t -> \\t
     #   \n -> \\n
     #   \r -> \\r
-    #   =  -> \\=  (避免和 key=value 分隔符冲突)
+    #   =  -> \\=  (so it cannot clash with the key=value separator)
     def _escape(s: str) -> str:
         s = s.replace("\\", "\\\\")
         s = s.replace("\t", "\\t")
@@ -80,15 +80,15 @@ def params_to_lua(d: dict) -> str:
 
 
 def unescape_text(s: str) -> str:
-    """反转义 Aseprite 端传来的转义文本。
+    """Undo the escaping applied on the Aseprite side.
 
-    对应 extension/main.lua 中的 escape_text 函数。
+    Mirrors escape_text in extension/main.lua.
 
     Args:
-        s: 转义后的字符串
+        s: the escaped string
 
     Returns:
-        原始字符串
+        the original string
     """
     if not s:
         return ""
@@ -116,23 +116,23 @@ def unescape_text(s: str) -> str:
 
 
 class WebSocketBridge:
-    """WebSocket 桥接器。
+    """WebSocket bridge.
 
-    在后台线程启动 WebSocket server，管理 Aseprite client 连接，
-    提供同步的 send_request 接口供 MCP 工具调用。
+    Runs a WebSocket server in a background thread, tracks the Aseprite client
+    connection, and exposes a synchronous send_request for MCP tools.
 
-    线程模型：
-    - 主线程：MCP 工具调用 send_request()（同步阻塞）
-    - WebSocket 线程：独立 asyncio 事件循环，处理连接和消息
-    - 跨线程通信：threading.Event + 共享 dict
+    Threading model:
+    - main thread: MCP tools call send_request() (blocks)
+    - WebSocket thread: an independent asyncio event loop handling connections/messages
+    - cross-thread hand-off: threading.Event + a shared dict
     """
 
     def __init__(self, host: str = "127.0.0.1", port: int = 9001):
-        """初始化桥接器。
+        """Initialise the bridge.
 
         Args:
-            host: WebSocket server 监听地址
-            port: WebSocket server 监听端口
+            host: address the WebSocket server listens on
+            port: port the WebSocket server listens on
         """
         if not _WEBSOCKETS_AVAILABLE:
             raise ImportError(
@@ -143,28 +143,28 @@ class WebSocketBridge:
         self.host = host
         self.port = port
 
-        # 当前连接的 Aseprite client（asyncio WebSocket）
+        # Currently connected Aseprite client (asyncio WebSocket)
         self._client = None
         self._client_lock = threading.Lock()
 
-        # 等待响应的请求：req_id → (threading.Event, result_box)
+        # Requests waiting for a response: req_id -> (threading.Event, result_box)
         self._pending: dict[str, tuple[threading.Event, dict]] = {}
         self._pending_lock = threading.Lock()
 
-        # WebSocket server 的事件循环和线程
+        # Event loop and thread of the WebSocket server
         self._loop: Optional[asyncio.AbstractEventLoop] = None
         self._thread: Optional[threading.Thread] = None
         self._server = None
         self._started = threading.Event()
 
     def start(self, timeout: float = 5.0) -> bool:
-        """在后台线程启动 WebSocket server。
+        """Start the WebSocket server on a background thread.
 
         Args:
-            timeout: 等待 server 启动的超时时间（秒）
+            timeout: how long to wait for the server to come up (seconds)
 
         Returns:
-            True 如果 server 启动成功
+            True when the server started successfully
         """
         if self._thread is not None:
             return True
@@ -175,7 +175,7 @@ class WebSocketBridge:
         return self._started.wait(timeout)
 
     def _run_server(self):
-        """WebSocket server 线程主函数。"""
+        """Body of the WebSocket server thread."""
         self._loop = asyncio.new_event_loop()
         asyncio.set_event_loop(self._loop)
 
@@ -188,23 +188,25 @@ class WebSocketBridge:
             self._loop.close()
 
     async def _serve(self):
-        """启动 WebSocket server 并持续运行。"""
+        """Start the WebSocket server and keep it running."""
         self._server = await serve(self._handle_client, self.host, self.port)
         self._started.set()
         _log(f"Server listening on ws://{self.host}:{self.port}")
         _log("Waiting for Aseprite extension to connect...")
 
     async def _handle_client(self, ws):
-        """处理 Aseprite client 连接。
+        """Handle an Aseprite client connection.
 
-        每个 Aseprite 实例连接后，持续接收响应消息并分发到对应的等待请求。
+        Once an Aseprite instance connects, it keeps delivering response messages, which
+        are dispatched to the request waiting for them.
         """
         peer = ws.remote_address if hasattr(ws, "remote_address") else "unknown"
         _log(f"Aseprite client connected: {peer}")
 
         stale = None
         with self._client_lock:
-            # 最新优先：旧连接必须被踢掉，否则它仍能抢答 pending 请求
+            # Newest wins: the old connection has to be kicked, or it can still answer
+            # pending requests out of turn
             stale, self._client = self._client, ws
         if stale is not None and stale is not ws:
             _log(f"closing stale client connection {peer}")
@@ -225,12 +227,13 @@ class WebSocketBridge:
             _log(f"Aseprite client disconnected: {peer}")
 
     async def _handle_response(self, message: str):
-        """解析 Aseprite 的响应，唤醒等待的请求。
+        """Parse an Aseprite response and wake the waiting request.
 
-        响应格式: <id>\t<success>\t<stdout_escaped>\t<stderr_escaped>
+        Response format: <id>\t<success>\t<stdout_escaped>\t<stderr_escaped>
 
-        字段不足的畸形响应（扩展早期版本在若干错误分支只写 3 个字段）同样要唤醒等待方，
-        否则调用方只能挂到超时才知道出事了。
+        Malformed responses with missing fields (early extension versions wrote only 3
+        fields on a few error branches) have to wake the waiter too, or the caller only
+        learns something went wrong when the wait times out.
         """
         parts = message.split("\t", 3)
         req_id = parts[0] if parts else ""
@@ -280,7 +283,7 @@ class WebSocketBridge:
             return self._pending.pop(req_id, None)
 
     def is_connected(self) -> bool:
-        """检查是否有 Aseprite client 连接。"""
+        """Return whether an Aseprite client is connected."""
         with self._client_lock:
             return self._client is not None
 
@@ -290,17 +293,17 @@ class WebSocketBridge:
         params: dict,
         timeout: float = 30.0,
     ) -> dict:
-        """同步发送脚本执行请求到 Aseprite，等待响应。
+        """Send a script-execution request to Aseprite and block until it answers.
 
         Args:
-            script_name: Lua 脚本文件名（如 "draw_pixel.lua"）
-            params: 脚本参数字典
-            timeout: 等待响应的超时时间（秒）
+            script_name: Lua script file name (e.g. "draw_pixel.lua")
+            params: script parameter dict
+            timeout: how long to wait for the response (seconds)
 
         Returns:
-            执行结果字典：
-            - 成功: {"success": True, "stdout": "...", "stderr": "..."}
-            - 失败: {"success": False, "stdout": "...", "stderr": "...", "error": "..."}
+            result dict:
+            - success: {"success": True, "stdout": "...", "stderr": "..."}
+            - failure: {"success": False, "stdout": "...", "stderr": "...", "error": "..."}
         """
         if not self.is_connected():
             return {
@@ -321,11 +324,11 @@ class WebSocketBridge:
         with self._pending_lock:
             self._pending[req_id] = (event, result_box)
 
-        # 构造请求消息: <id>\t<script_name>\t<params_key=value_pairs>
+        # Build the request: <id>\t<script_name>\t<params_key=value_pairs>
         encoded_params = params_to_lua(params)
         message = f"{req_id}\t{script_name}\t{encoded_params}"
 
-        # 在 WebSocket server 的事件循环中发送消息
+        # Send on the WebSocket server's event loop
         with self._client_lock:
             client = self._client
 
@@ -336,13 +339,13 @@ class WebSocketBridge:
 
         try:
             future = asyncio.run_coroutine_threadsafe(client.send(message), self._loop)
-            future.result(timeout=5.0)  # 发送本身的超时
+            future.result(timeout=5.0)  # timeout for the send itself
         except Exception as e:
             with self._pending_lock:
                 self._pending.pop(req_id, None)
             return {"success": False, "stdout": "", "stderr": "", "error": f"Failed to send request: {e}"}
 
-        # 等待 Aseprite 执行并回传响应
+        # Wait for Aseprite to run the script and send the response back
         if not event.wait(timeout):
             with self._pending_lock:
                 self._pending.pop(req_id, None)
@@ -363,7 +366,7 @@ class WebSocketBridge:
         })
 
     def stop(self):
-        """停止 WebSocket server。"""
+        """Stop the WebSocket server."""
         if self._loop and self._server:
 
             async def _shutdown():

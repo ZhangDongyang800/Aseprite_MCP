@@ -1,4 +1,4 @@
-"""统一结果信封与稳定错误分类（spec §7）。"""
+"""Unified result envelope with stable error classification (spec §7)."""
 
 import re
 from enum import Enum

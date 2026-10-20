@@ -1,4 +1,4 @@
-"""文档结构 op：加帧、设每帧时长、给帧区间命名。"""
+"""Document-structure ops: add frames, set per-frame durations, name frame ranges."""
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 

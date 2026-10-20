@@ -1,12 +1,15 @@
-"""Aseprite 执行器模块。
+"""Aseprite executors.
 
-提供两种执行模式：
-1. CLI 模式（AsepriteRunner）：通过 subprocess 调用 Aseprite CLI（aseprite -b --script），
-   每次调用是独立进程，通过 .ase 文件传递状态。
-2. WebSocket 模式（WebSocketRunner）：通过 WebSocket 向运行中的 Aseprite 扩展发送命令，
-   AI 直接操作用户可见的 Aseprite 实例，状态持久、UI 实时可见。
+Two execution modes:
+1. CLI mode (AsepriteRunner): calls the Aseprite CLI through a subprocess
+   (aseprite -b --script); every call is its own process and state travels through the
+   .ase file.
+2. WebSocket mode (WebSocketRunner): sends commands over WebSocket to the extension inside
+   a running Aseprite, so the AI drives the instance the user can see - state persists and
+   the UI updates live.
 
-两种模式的 run_script() 接口完全一致，工具层无需感知底层差异。
+Both modes expose the identical run_script() interface, so the tool layer never has to
+know which one it is talking to.
 """
 
 import os
@@ -32,10 +35,10 @@ def _aseprite_env(appdata_dir: Path) -> dict:
 
 @dataclass
 class AsepriteRunner:
-    """Aseprite CLI 执行器。
+    """Aseprite CLI executor.
 
-    封装 subprocess 调用，构造 aseprite -b --script-param k=v --script xxx.lua 命令。
-    注意：--script-param 必须在 --script 之前，否则 app.params 为空。
+    Wraps the subprocess call and builds aseprite -b --script-param k=v --script xxx.lua.
+    Note: --script-param must precede --script, otherwise app.params is empty.
     """
 
     config: Config
@@ -43,24 +46,24 @@ class AsepriteRunner:
     def run_script(
         self, script_name: str, params: dict
     ) -> dict:
-        """执行 Aseprite Lua 脚本。
+        """Run an Aseprite Lua script.
 
         Args:
-            script_name: Lua 脚本文件名（如 "draw_pixel.lua"）
-            params: 传递给脚本的参数字典（所有值转为字符串）
+            script_name: Lua script file name (e.g. "draw_pixel.lua")
+            params: parameters passed to the script (all values become strings)
 
         Returns:
-            执行结果字典：
-            - 成功: {"success": True, "stdout": "...", "stderr": "..."}
-            - 失败: {"success": False, "stdout": "...", "stderr": "...", "error": "..."}
+            result dict:
+            - success: {"success": True, "stdout": "...", "stderr": "..."}
+            - failure: {"success": False, "stdout": "...", "stderr": "...", "error": "..."}
         """
         return self._invoke(self._build_cmd(self.config.scripts_dir / script_name, params))
 
     def check_aseprite_exists(self) -> bool:
-        """检查 Aseprite 可执行文件是否存在。
+        """Check whether the Aseprite executable exists.
 
         Returns:
-            True 如果路径存在，False 否则
+            True when the path exists, False otherwise
         """
         return Path(self.config.aseprite_path).exists()
 
@@ -95,7 +98,8 @@ class AsepriteRunner:
         """Run one batched Aseprite invocation; every failure mode maps to a result dict."""
         timeout = getattr(self.config, "script_timeout", 30) or 30
         try:
-            # 指定 UTF-8 编码，避免 Windows GBK 乱码导致 JSON 解析失败
+            # Force UTF-8 so a Windows GBK console cannot mangle the output and break the
+            # JSON parsing
             result = subprocess.run(
                 cmd,
                 capture_output=True,
@@ -133,38 +137,40 @@ class AsepriteRunner:
 
 @dataclass
 class WebSocketRunner:
-    """WebSocket 模式执行器。
+    """WebSocket-mode executor.
 
-    通过 WebSocketBridge 向运行中的 Aseprite 扩展发送脚本执行请求。
-    与 AsepriteRunner 接口完全一致，可无缝替换。
+    Sends script-execution requests to the extension inside a running Aseprite through
+    WebSocketBridge. Interface-compatible with AsepriteRunner, so the two are drop-in
+    replacements for each other.
 
-    优势：
-    - AI 直接操作用户可见的 Aseprite 实例
-    - 状态持久（无需每次重新打开 .ase 文件）
-    - UI 实时可见（用户能看到 AI 在画）
+    Upside:
+    - the AI drives the Aseprite instance the user can see
+    - state persists (no reopening the .ase file on every call)
+    - the UI shows the AI drawing in real time
 
-    限制：
-    - 需要用户手动安装扩展并点击"Toggle Connection"
-    - Aseprite 失焦时 WebSocket 回调可能延迟
+    Limits:
+    - the user has to install the extension and click "Toggle Connection"
+    - WebSocket callbacks can lag when Aseprite is unfocused
     """
 
-    bridge: object  # WebSocketBridge 实例
+    bridge: object  # a WebSocketBridge instance
     config: Config
 
     def run_script(self, script_name: str, params: dict) -> dict:
-        """通过 WebSocket 向 Aseprite 发送脚本执行请求。
+        """Send a script-execution request to Aseprite over WebSocket.
 
         Args:
-            script_name: Lua 脚本文件名（如 "draw_pixel.lua"）
-            params: 脚本参数字典（所有值会在 Aseprite 端转为字符串）
+            script_name: Lua script file name (e.g. "draw_pixel.lua")
+            params: script parameter dict (values become strings on the Aseprite side)
 
         Returns:
-            执行结果字典（与 AsepriteRunner.run_script 格式一致）：
-            - 成功: {"success": True, "stdout": "...", "stderr": "..."}
-            - 失败: {"success": False, "stdout": "...", "stderr": "...", "error": "..."}
+            result dict (same shape as AsepriteRunner.run_script):
+            - success: {"success": True, "stdout": "...", "stderr": "..."}
+            - failure: {"success": False, "stdout": "...", "stderr": "...", "error": "..."}
         """
-        # 构造完整脚本路径（Aseprite 扩展需要绝对路径来 dofile）
-        # bridge.send_request 已返回与 AsepriteRunner 一致的格式，直接透传
+        # Build the full script path (the Aseprite extension needs an absolute path to
+        # dofile)
+        # bridge.send_request already returns the AsepriteRunner shape, so pass it through
         script_path = str(self.config.scripts_dir / script_name)
         return self.bridge.send_request(script_path, params)
 
@@ -173,9 +179,9 @@ class WebSocketRunner:
         return self.bridge.send_request(script_path, params)
 
     def check_aseprite_exists(self) -> bool:
-        """检查 Aseprite 扩展是否已连接。
+        """Check whether the Aseprite extension is connected.
 
         Returns:
-            True 如果有 Aseprite client 连接，False 否则
+            True when an Aseprite client is connected, False otherwise
         """
         return self.bridge.is_connected()

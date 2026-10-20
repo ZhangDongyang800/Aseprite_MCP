@@ -1,6 +1,6 @@
-"""配置管理模块。
+"""Configuration management.
 
-从环境变量读取配置，提供合理默认值。
+Reads settings from environment variables and supplies sensible defaults.
 """
 
 import os
@@ -30,43 +30,45 @@ def _warn_unusable_work_dir(path: Path) -> None:
 
 @dataclass
 class Config:
-    """MCP 服务器配置。
+    """MCP server configuration.
 
-    通过环境变量可覆盖默认值：
-    - ASEPRITE_PATH: Aseprite 可执行文件路径
-    - ASEPRITE_WORK_DIR: 会话工作目录根（默认 <repo>/work）
-    - ASEPRITE_SESSION_TIMEOUT: 会话超时时间（秒）
-    - ASEPRITE_TIMEOUT: 单次 Aseprite 调用超时（秒，默认 30；大画布填充/模糊可放宽）
-    - ASEPRITE_MCP_MODE: 执行模式（"cli" 或 "ws"），默认 "cli"
-    - ASEPRITE_WS_HOST: WebSocket server 监听地址，默认 "127.0.0.1"
-    - ASEPRITE_WS_PORT: WebSocket server 监听端口，默认 9001
+    Override the defaults through environment variables:
+    - ASEPRITE_PATH: path to the Aseprite executable
+    - ASEPRITE_WORK_DIR: root of the session work directories (default <repo>/work)
+    - ASEPRITE_SESSION_TIMEOUT: session timeout (seconds)
+    - ASEPRITE_TIMEOUT: per-call Aseprite timeout (seconds, default 30; relax it for
+      big-canvas fill/blur)
+    - ASEPRITE_MCP_MODE: execution mode ("cli" or "ws"), default "cli"
+    - ASEPRITE_WS_HOST: address the WebSocket server listens on, default "127.0.0.1"
+    - ASEPRITE_WS_PORT: port the WebSocket server listens on, default 9001
     """
 
-    # Aseprite 可执行文件路径（默认指向用户本机编译版本）
+    # Path to the Aseprite executable (defaults to the user's own build)
     aseprite_path: str = None
 
-    # 会话工作目录
+    # Session work directory
     work_dir: Path = None
 
-    # 会话超时时间（秒）
+    # Session timeout (seconds)
     session_timeout: int = None
 
-    # Lua 脚本目录（自动定位，不可通过环境变量配置）
+    # Lua script directory (located automatically, not configurable via env vars)
     scripts_dir: Path = None
 
-    # 执行模式："cli"（传统 CLI subprocess）或 "ws"（WebSocket 实时模式）
+    # Execution mode: "cli" (classic CLI subprocess) or "ws" (live WebSocket mode)
     mode: str = None
 
-    # WebSocket server 配置（仅 mode="ws" 时生效）
+    # WebSocket server settings (only used when mode="ws")
     ws_host: str = None
     ws_port: int = None
 
-    # 单次 Aseprite 调用的时间预算（秒）：大画布填充/模糊会比日常绘制慢一个量级
+    # Time budget for one Aseprite call (seconds): a big-canvas fill/blur is an order of
+    # magnitude slower than everyday drawing
     script_timeout: int = None
 
     def __post_init__(self):
-        """从环境变量加载配置，应用默认值。"""
-        # Aseprite 可执行文件路径
+        """Load configuration from environment variables and apply the defaults."""
+        # Aseprite executable path
         if self.aseprite_path is None:
             from src.aseprite_locate import locate_aseprite
 
@@ -76,8 +78,9 @@ class Config:
                 or "aseprite"
             )
 
-        # 会话工作目录：默认落在仓库根下。相对路径会解析到宿主给进程的任意 cwd，
-        # 那个目录既可能不可写，也可能把会话文件撒到意想不到的地方。
+        # Session work directory: defaults to the repo root. A relative path would resolve
+        # against whatever cwd the host handed the process - possibly unwritable, and it
+        # scatters session files somewhere unexpected.
         if self.work_dir is None:
             self.work_dir = Path(
                 os.environ.get("ASEPRITE_WORK_DIR") or _REPO_ROOT / "work"
@@ -85,25 +88,26 @@ class Config:
         self.work_dir = Path(self.work_dir).expanduser().resolve()
         _warn_unusable_work_dir(self.work_dir)
 
-        # 会话超时时间
+        # Session timeout
         if self.session_timeout is None:
             self.session_timeout = int(
                 os.environ.get("ASEPRITE_SESSION_TIMEOUT", "3600")
             )
 
-        # 单次脚本调用的超时（秒）：默认 30s，慢的大画布工作负载可用 ASEPRITE_TIMEOUT 放宽
+        # Per-script-call timeout (seconds): 30s by default; slow big-canvas workloads can
+        # relax it with ASEPRITE_TIMEOUT
         if self.script_timeout is None:
             self.script_timeout = int(os.environ.get("ASEPRITE_TIMEOUT", "30"))
 
-        # Lua 脚本目录：自动定位为 src 包的父目录下的 scripts/
-        # 即 <项目根>/scripts/
+        # Lua script directory: resolved to scripts/ next to the src package's parent,
+        # i.e. <project root>/scripts/
         self.scripts_dir = Path(__file__).parent.parent / "scripts"
 
-        # 执行模式：cli（默认）或 ws（WebSocket 实时模式）
+        # Execution mode: cli (default) or ws (live WebSocket mode)
         if self.mode is None:
             self.mode = os.environ.get("ASEPRITE_MCP_MODE", "cli")
 
-        # WebSocket server 配置
+        # WebSocket server settings
         if self.ws_host is None:
             self.ws_host = os.environ.get("ASEPRITE_WS_HOST", "127.0.0.1")
         if self.ws_port is None:

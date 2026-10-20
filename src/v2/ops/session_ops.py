@@ -1,4 +1,4 @@
-"""会话生命周期 op（spec §5）。"""
+"""Session lifecycle ops (spec §5)."""
 
 from enum import Enum
 from typing import Optional
@@ -53,7 +53,7 @@ def register() -> None:
                              lua="_mcp_op_save_sprite", mutating=True))
     REGISTRY.register(OpSpec("close_session", "session", CloseSession,
                              mutating=True, destructive=True))
-    # 元 op：无 Lua，由 tools.apply_operations 路由到 Engine.undo/redo（spec §6.3）
+    # Meta op: no Lua, tools.apply_operations routes it to Engine.undo/redo (spec §6.3)
     REGISTRY.register(OpSpec("undo", "meta", UndoRedo, mutating=True))
     REGISTRY.register(OpSpec("redo", "meta", UndoRedo, mutating=True))
 

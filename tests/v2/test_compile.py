@@ -54,7 +54,7 @@ def test_compile_atomic_probes_transaction_and_uses_body():
     assert "_mcp_op_draw_pixel" in src
     assert "{x=3,color=\"#FF0000\"}" in src
     assert "local _body = function()" in src
-    # 探测 + 真实执行，共两处 app.transaction（均以 pcall(app.transaction, ...) 形式调用）
+    # Probe + real run: two app.transaction calls, both via pcall(app.transaction, ...)
     assert src.count("app.transaction") == 2
     assert src.count("pcall(app.transaction,") == 2
     assert "transaction=_tx_used" in src
@@ -68,7 +68,7 @@ def test_compile_non_atomic_has_no_transaction():
         file_path=Path("c.ase"), scripts_dir=Path("s"), atomic=False,
     )
     assert "app.transaction(" not in src
-    assert "transaction=_tx_used" in src  # 非原子路径报告 transaction=false
+    assert "transaction=_tx_used" in src  # the non-atomic path reports transaction=false
 
 
 def test_compile_non_bootstrap_calls_resolve():

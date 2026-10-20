@@ -77,7 +77,7 @@ def test_inspect_calls_script_with_session_path_and_writes_preview(tools):
     assert result.content[0].type == "image"
     assert result.structured_content["ok"] is True
     assert result.structured_content["meta"] == META
-    # 指标必须来自 scale=1 的 metrics_src.png，而不是放大后的 preview.png
+    # Metrics must come from the scale=1 metrics_src.png, not the upscaled preview.png
     metrics = result.structured_content["metrics"]
     assert metrics["width"] == 2
     assert metrics["height"] == 2
@@ -123,7 +123,7 @@ def test_inspect_passes_frame(tools):
 
 
 def test_inspect_missing_export_is_error_not_traceback(tools):
-    """脚本自称成功却没落盘时，必须回结构化错误而不是 FileNotFoundError。"""
+    """A success claim with no file on disk is an error, not a FileNotFoundError."""
     captured, sm, runner = tools
     sid = sm.create_session(2, 2)
     runner.run_script.return_value = {"success": True, "stdout": json.dumps(META),
@@ -159,7 +159,7 @@ def test_inspect_holds_session_lock(tools):
     captured["inspect"](session_id=sid)
 
     engine.session_lock.assert_called_once_with(sid)
-    # 进入锁时脚本尚未跑；退出锁前脚本与 metrics.json 均已完成
+    # On lock entry the script has not run yet; on exit both it and metrics.json are done
     assert calls == [("enter", False, False), ("exit", True, True)]
 
 

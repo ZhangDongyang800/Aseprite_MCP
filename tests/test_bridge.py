@@ -1,10 +1,11 @@
-"""WebSocket 桥接模块测试。
+"""Tests for the WebSocket bridge module.
 
-测试内容：
-1. params_to_lua / unescape_text 单元测试
-2. WebSocketBridge 集成测试（用 Python websockets client 模拟 Aseprite 扩展）
-3. WebSocketRunner 接口测试
-4. Config 模式切换测试
+Covers:
+1. params_to_lua / unescape_text unit tests
+2. WebSocketBridge integration tests (a Python websockets client stands in for
+   the Aseprite extension)
+3. WebSocketRunner interface tests
+4. Config mode switching
 """
 
 import asyncio
@@ -24,12 +25,12 @@ from src.runner import WebSocketRunner
 
 
 # ============================================================
-# 单元测试：params_to_lua
+# Unit tests: params_to_lua
 # ============================================================
 
 
 class TestParamsToLua:
-    """测试 Python dict → key=value 参数编码。"""
+    """Python dict -> key=value parameter encoding."""
 
     def test_empty_dict(self):
         assert params_to_lua({}) == ""
@@ -58,12 +59,12 @@ class TestParamsToLua:
         assert "optional=" in result
 
     def test_equals_in_value(self):
-        """值中的等号应被转义。"""
+        """An equals sign inside a value must be escaped."""
         result = params_to_lua({"formula": "a=b+c"})
         assert "formula=a\\=b+c" in result
 
     def test_backslash_in_value(self):
-        """Windows 路径中的反斜杠应被转义。"""
+        """Backslashes in Windows paths must be escaped."""
         result = params_to_lua({"path": "C:\\temp\\file.txt"})
         assert "path=C:\\\\temp\\\\file.txt" in result
 
@@ -76,18 +77,18 @@ class TestParamsToLua:
         assert "text=a\\tb" in result
 
     def test_key_with_special_chars(self):
-        """键名中的特殊字符也应被转义。"""
+        """Special characters in keys must be escaped too."""
         result = params_to_lua({"my=key": "value"})
         assert "my\\=key=value" in result
 
 
 # ============================================================
-# 单元测试：unescape_text
+# Unit tests: unescape_text
 # ============================================================
 
 
 class TestUnescapeText:
-    """测试转义文本的反转义。"""
+    """Unescaping of escaped text."""
 
     def test_empty(self):
         assert unescape_text("") == ""
@@ -112,23 +113,23 @@ class TestUnescapeText:
         assert unescape_text("a\\tb\\nc\\\\d") == "a\tb\nc\\d"
 
     def test_roundtrip(self):
-        """转义→反转义应恢复原值。"""
+        """Escape -> unescape must restore the original value."""
         original = "OK: drew pixel at (10, 20)"
-        # 模拟 Lua 端的 escape_text
+        # Emulate escape_text on the Lua side
         escaped = original.replace("\\", "\\\\").replace("\t", "\\t").replace("\n", "\\n").replace("\r", "\\r")
         assert unescape_text(escaped) == original
 
 
 # ============================================================
-# 集成测试：WebSocketBridge（需要 websockets 库）
+# Integration tests: WebSocketBridge (requires the websockets library)
 # ============================================================
 
 
 @pytest.fixture
 def bridge_server():
-    """启动一个真实的 WebSocketBridge server 用于测试。
+    """Start a real WebSocketBridge server for the test.
 
-    使用非默认端口避免冲突。
+    A non-default port is used to avoid clashes.
     """
     if not _WEBSOCKETS_AVAILABLE:
         pytest.skip("websockets library not available")
@@ -137,12 +138,15 @@ def bridge_server():
     assert bridge.start(timeout=3.0)
     yield bridge
     bridge.stop()
-    time.sleep(0.2)  # 等待端口释放
+    time.sleep(0.2)  # wait for the port to be released
 
 
 def parse_params_from_request(message: str) -> dict:
-    """模拟 Aseprite 扩展解析参数对 key=value（\t 分隔，转义已处理）。"""
-    # 先拆分消息字段，同时处理转义序列（与 Lua split_message 行为一致）
+    """Parse key=value pairs the way the Aseprite extension does.
+
+    Pairs are tab-separated and escape sequences are decoded here.
+    """
+    # Split the fields and decode escapes in one pass (matches Lua split_message)
     parts = []
     current = []
     i = 0
@@ -189,10 +193,10 @@ def parse_params_from_request(message: str) -> dict:
 
 @pytest.fixture
 def mock_aseprite_client(bridge_server):
-    """模拟 Aseprite 扩展：连接到 bridge server，响应请求。
+    """Stand in for the Aseprite extension: connect to the bridge, answer requests.
 
-    收到请求后，解析 script_name 和 params，执行一个简化的"脚本"逻辑，
-    返回响应。
+    On each request it parses script_name and params, runs a simplified
+    "script" and sends a response back.
     """
     if not _WEBSOCKETS_AVAILABLE:
         pytest.skip("websockets library not available")
@@ -207,7 +211,7 @@ def mock_aseprite_client(bridge_server):
         uri = "ws://127.0.0.1:9876"
         try:
             async with websockets.connect(uri) as ws:
-                # 循环接收请求，直到收到停止信号或连接关闭
+                # Keep receiving requests until asked to stop or the connection closes
                 while not stop_event.is_set():
                     try:
                         message = await asyncio.wait_for(ws.recv(), timeout=0.5)
@@ -220,24 +224,24 @@ def mock_aseprite_client(bridge_server):
                     params = parse_params_from_request(message)
                     received_params.append(params)
 
-                    # 解析请求: <id>\t<script_name>\t<key=value pairs>
+                    # Request format: <id>\t<script_name>\t<key=value pairs>
                     parts = message.split("\t", 2)
                     req_id = parts[0]
                     script_name = parts[1]
 
-                    # 根据脚本名返回不同的响应
+                    # Return a different response depending on the script name
                     if "not_found" in script_name:
                         response = f"{req_id}\tfalse\t\terror: script not found"
                     else:
-                        # 成功响应
+                        # Success response
                         stdout = f"OK: executed {script_name}"
                         response = f"{req_id}\ttrue\t{stdout}\t"
 
                     await ws.send(response)
         except Exception:
-            pass  # 连接关闭等异常，静默退出
+            pass  # connection closed or similar; exit silently
 
-    # 在单独的线程中运行 client
+    # Run the client on its own thread
     client_loop = asyncio.new_event_loop()
 
     def run_loop():
@@ -247,15 +251,15 @@ def mock_aseprite_client(bridge_server):
     client_thread = threading.Thread(target=run_loop, daemon=True)
     client_thread.start()
 
-    # 等待 client 连接到 server
+    # Wait for the client to connect to the server
     time.sleep(0.3)
 
     yield {"messages": received_messages, "params": received_params}
 
-    # 优雅停止：设置停止信号，等待协程自然退出
+    # Stop gracefully: set the stop flag and let the coroutine exit on its own
     stop_event.set()
     client_thread.join(timeout=3.0)
-    # 取消所有剩余任务
+    # Cancel whatever tasks are left
     try:
         pending = asyncio.all_tasks(client_loop)
         for task in pending:
@@ -268,22 +272,22 @@ def mock_aseprite_client(bridge_server):
 
 
 class TestWebSocketBridgeIntegration:
-    """WebSocketBridge 集成测试。"""
+    """WebSocketBridge integration tests."""
 
     def test_bridge_starts(self, bridge_server):
-        """Bridge server 能正常启动。"""
+        """The bridge server starts."""
         assert bridge_server is not None
         assert bridge_server._loop is not None
 
     def test_no_client_connected(self, bridge_server):
-        """无 client 连接时，send_request 返回错误。"""
+        """With no client connected, send_request returns an error."""
         result = bridge_server.send_request("test.lua", {"x": 1}, timeout=1.0)
         assert result["success"] is False
         assert "not connected" in result["error"].lower()
 
     def test_request_response_cycle(self, bridge_server, mock_aseprite_client):
-        """完整的请求-响应流程。"""
-        # 等待 client 连接
+        """A full request-response round trip."""
+        # Wait for the client to connect
         time.sleep(0.5)
 
         result = bridge_server.send_request(
@@ -296,7 +300,7 @@ class TestWebSocketBridgeIntegration:
         assert "OK: executed draw_pixel.lua" in result["stdout"]
 
     def test_request_with_special_chars(self, bridge_server, mock_aseprite_client):
-        """参数含特殊字符（路径、等号）时能正确传输。"""
+        """Parameters with special characters (paths, equals signs) survive the trip."""
         time.sleep(0.5)
 
         result = bridge_server.send_request(
@@ -306,20 +310,20 @@ class TestWebSocketBridgeIntegration:
         )
 
         assert result["success"] is True
-        # 验证 client 收到了消息
+        # The client received the message
         assert len(mock_aseprite_client["messages"]) > 0
-        # 验证参数正确解析
+        # The parameters parsed back correctly
         params = mock_aseprite_client["params"][-1]
         assert params["file"] == "C:\\temp\\canvas.ase"
         assert params["formula"] == "a=b+c"
 
 
 class TestWebSocketRunner:
-    """WebSocketRunner 接口测试。"""
+    """WebSocketRunner interface tests."""
 
     def test_runner_interface_matches_cli(self):
-        """WebSocketRunner 的 run_script 返回格式与 AsepriteRunner 一致。"""
-        # 用 mock bridge
+        """WebSocketRunner.run_script returns the same shape as AsepriteRunner."""
+        # Use a mock bridge
         class MockBridge:
             def is_connected(self):
                 return True
@@ -342,7 +346,7 @@ class TestWebSocketRunner:
         assert "error" not in result
 
     def test_runner_handles_failure(self):
-        """失败时返回 error 字段。"""
+        """A failure carries an error field."""
         class MockBridge:
             def is_connected(self):
                 return True
@@ -365,7 +369,7 @@ class TestWebSocketRunner:
         assert result["stderr"] == "some error"
 
     def test_runner_handles_disconnected(self):
-        """无连接时返回连接错误。"""
+        """With no connection it reports a connection error."""
         class MockBridge:
             def is_connected(self):
                 return False
@@ -387,7 +391,7 @@ class TestWebSocketRunner:
         assert "not connected" in result["error"]
 
     def test_runner_constructs_full_path(self):
-        """Runner 应构造完整的脚本路径。"""
+        """The runner builds the full script path."""
         captured_path = []
 
         class MockBridge:
@@ -403,14 +407,14 @@ class TestWebSocketRunner:
 
         runner.run_script("draw_pixel.lua", {"x": 1})
 
-        # 验证传给 bridge 的是完整路径
+        # What reaches the bridge is the full path
         assert len(captured_path) == 1
         assert captured_path[0].endswith("draw_pixel.lua")
-        # 应包含 scripts 目录的绝对路径
+        # It must contain the absolute scripts dir
         assert "scripts" in captured_path[0].replace("\\", "/")
 
     def test_check_aseprite_exists(self):
-        """check_aseprite_exists 应委托给 bridge.is_connected。"""
+        """check_aseprite_exists delegates to bridge.is_connected."""
         class MockBridge:
             def __init__(self, connected):
                 self._connected = connected
@@ -427,27 +431,27 @@ class TestWebSocketRunner:
 
 
 # ============================================================
-# Config 模式测试
+# Config mode tests
 # ============================================================
 
 
 class TestConfigMode:
-    """测试 Config 的模式切换。"""
+    """Config mode switching."""
 
     def test_default_mode_is_cli(self, monkeypatch):
-        """默认模式应为 cli。"""
+        """The default mode is cli."""
         monkeypatch.delenv("ASEPRITE_MCP_MODE", raising=False)
         config = Config()
         assert config.mode == "cli"
 
     def test_ws_mode_via_env(self, monkeypatch):
-        """通过环境变量切换到 ws 模式。"""
+        """The env var switches to ws mode."""
         monkeypatch.setenv("ASEPRITE_MCP_MODE", "ws")
         config = Config()
         assert config.mode == "ws"
 
     def test_ws_host_port_defaults(self, monkeypatch):
-        """ws 模式默认地址和端口。"""
+        """Default ws host and port."""
         monkeypatch.delenv("ASEPRITE_WS_HOST", raising=False)
         monkeypatch.delenv("ASEPRITE_WS_PORT", raising=False)
         config = Config()
@@ -455,7 +459,7 @@ class TestConfigMode:
         assert config.ws_port == 9001
 
     def test_ws_host_port_via_env(self, monkeypatch):
-        """通过环境变量自定义 ws 地址和端口。"""
+        """The ws host and port can be customized through the env vars."""
         monkeypatch.setenv("ASEPRITE_WS_HOST", "0.0.0.0")
         monkeypatch.setenv("ASEPRITE_WS_PORT", "8080")
         config = Config()

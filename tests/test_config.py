@@ -1,4 +1,4 @@
-"""配置管理模块的测试。"""
+"""Tests for the configuration module."""
 
 import os
 from pathlib import Path
@@ -6,7 +6,7 @@ from unittest.mock import patch
 
 
 def test_aseprite_path_uses_detected_path(monkeypatch, tmp_path):
-    """测试未设置环境变量时使用自动探测结果。"""
+    """With no env var set, the auto-detected path is used."""
     from src import aseprite_locate
     from src.config import Config
 
@@ -17,7 +17,7 @@ def test_aseprite_path_uses_detected_path(monkeypatch, tmp_path):
 
 
 def test_aseprite_path_falls_back_to_command_name(monkeypatch):
-    """测试探测失败时回退到 "aseprite" 交由系统解析。"""
+    """When detection fails, fall back to "aseprite" and let the system resolve it."""
     from src import aseprite_locate
     from src.config import Config
 
@@ -27,7 +27,7 @@ def test_aseprite_path_falls_back_to_command_name(monkeypatch):
 
 
 def test_env_path_takes_precedence_over_detection(monkeypatch, tmp_path):
-    """测试 ASEPRITE_PATH 优先于自动探测。"""
+    """ASEPRITE_PATH wins over auto-detection."""
     from src import aseprite_locate
     from src.config import Config
 
@@ -38,7 +38,7 @@ def test_env_path_takes_precedence_over_detection(monkeypatch, tmp_path):
 
 
 def test_custom_aseprite_path_via_env():
-    """测试通过环境变量自定义 Aseprite 路径。"""
+    """The Aseprite path can be customized through the env var."""
     from src.config import Config
 
     with patch.dict(os.environ, {"ASEPRITE_PATH": "/custom/path/aseprite.exe"}):
@@ -59,7 +59,7 @@ def test_default_work_dir_is_absolute_under_the_repo():
 
 
 def test_custom_work_dir_via_env():
-    """测试通过环境变量自定义工作目录（解析成绝对路径）。"""
+    """The work dir can be customized through the env var (resolved to absolute)."""
     from src.config import Config
 
     with patch.dict(os.environ, {"ASEPRITE_WORK_DIR": "/tmp/custom_work"}):
@@ -78,7 +78,7 @@ def test_work_dir_layout_separates_sessions_from_infrastructure():
 
 
 def test_default_session_timeout():
-    """测试默认会话超时时间。"""
+    """Default session timeout."""
     from src.config import Config
 
     with patch.dict(os.environ, {}, clear=False):
@@ -88,7 +88,7 @@ def test_default_session_timeout():
 
 
 def test_custom_session_timeout_via_env():
-    """测试通过环境变量自定义超时时间。"""
+    """The timeout can be customized through the env var."""
     from src.config import Config
 
     with patch.dict(os.environ, {"ASEPRITE_SESSION_TIMEOUT": "7200"}):
@@ -97,11 +97,11 @@ def test_custom_session_timeout_via_env():
 
 
 def test_scripts_dir_is_always_relative_to_package():
-    """测试脚本目录总是相对于 src 包定位。"""
+    """The scripts dir is always located relative to the src package."""
     from src.config import Config
 
     config = Config()
-    # scripts 目录应与 src 同级
+    # the scripts dir should sit next to src
     expected_parent = Path(__file__).parent.parent
     assert config.scripts_dir == expected_parent / "scripts"
 

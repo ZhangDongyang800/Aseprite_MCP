@@ -46,7 +46,8 @@ def engine(tmp_path, monkeypatch):
     config = Config()
     config.work_dir = tmp_path
     config.mode = "cli"
-    # 真实 op 由 Task 1.6 全局注册；本任务用测试局部注册表注入，避免污染 REGISTRY。
+    # Real ops are registered globally in Task 1.6; this suite injects a local
+    # test registry instead so the real REGISTRY stays clean.
     monkeypatch.setattr("src.v2.executor.REGISTRY", _test_registry())
     sm = SessionManager(config)
     runner = MagicMock()
@@ -162,12 +163,13 @@ def test_failed_cli_batch_restores_snapshot_and_keeps_undo_backup(engine):
     path = sm.get_ase_path(sid)
     path.write_bytes(b"V1")
     work = sm.get_work_dir(sid)
-    # 先做一次成功批量，产生 undo_backup.ase = V1（前一次成功批量的快照）
+    # One successful batch first: it leaves undo_backup.ase = V1 (the snapshot
+    # taken before that batch).
     assert eng.apply(sid, [{"op": "draw_pixel", "x": 1, "y": 1, "color": "#FF0000"}]).ok is True
     assert (work / "undo_backup.ase").read_bytes() == b"V1"
 
     def fail_after_partial_write(script, params):
-        path.write_bytes(b"PARTIAL")  # 模拟失败批量已把部分结果写盘
+        path.write_bytes(b"PARTIAL")  # simulate a failed batch that already wrote results
         return _payload(
             [{"op": "draw_pixel", "ok": False, "data": "boom"}],
             saved=False, error="boom", transaction=False,

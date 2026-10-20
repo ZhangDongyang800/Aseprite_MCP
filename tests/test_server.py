@@ -1,7 +1,8 @@
-"""server.py 工具注册测试（v2 三工具面）。
+"""Tests for the tool registration in server.py (the v2 three-tool surface).
 
-server 只注册 v2 的 apply_operations / inspect / run_lua；v1 的
-register_*_tools 已随 src/tools/ 一起删除，这个集合就是它们的反面。
+The server registers only the v2 apply_operations / inspect / run_lua; the v1
+register_*_tools were deleted along with src/tools/, so this set is what
+replaced them.
 """
 
 import asyncio
@@ -10,7 +11,7 @@ EXPECTED_TOOLS = {"apply_operations", "inspect", "run_lua"}
 
 
 def test_v2_tools_registered():
-    """create_server() 只注册 v2 的三个工具。"""
+    """create_server() registers exactly the three v2 tools."""
     from server import create_server
 
     mcp = create_server()

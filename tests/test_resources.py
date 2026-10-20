@@ -1,4 +1,4 @@
-"""MCP Resources 测试。"""
+"""Tests for the MCP resources."""
 
 import json
 import pytest
@@ -9,7 +9,7 @@ from src.resources import register_resources
 
 @pytest.fixture
 def setup():
-    """提供 mock 依赖。"""
+    """Provide the mocked dependencies."""
     session_manager = MagicMock()
     session_manager.list_sessions.return_value = [
         {"session_id": "s1", "width": 16, "height": 16, "color_mode": "rgb"},
@@ -35,7 +35,7 @@ def setup():
 
 
 def test_list_sessions_resource(setup):
-    """测试会话列表 resource 返回 JSON。"""
+    """The session list resource returns JSON."""
     resources, session_manager = setup
 
     result = resources["aseprite://sessions"]()
@@ -47,7 +47,7 @@ def test_list_sessions_resource(setup):
 
 
 def test_get_canvas_info_resource(setup):
-    """测试画布信息 resource 返回 JSON。"""
+    """The canvas info resource returns JSON."""
     resources, session_manager = setup
 
     result = resources["aseprite://canvas/{session_id}/info"]("s1")
@@ -59,7 +59,7 @@ def test_get_canvas_info_resource(setup):
 
 
 def test_get_default_palette_resource(setup):
-    """测试默认调色板 resource 返回 JSON。"""
+    """The default palette resource returns JSON."""
     resources, session_manager = setup
 
     result = resources["aseprite://palette/default"]()

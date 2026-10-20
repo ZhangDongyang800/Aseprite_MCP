@@ -1,18 +1,18 @@
-"""Aseprite MCP 服务器入口。
+"""Aseprite MCP server entry point.
 
-创建 FastMCP 实例，注册 v2 三工具面（apply_operations / inspect / run_lua）、
-资源和提示，启动服务器。
+Creates the FastMCP instance, registers the three-tool v2 surface
+(apply_operations / inspect / run_lua) plus resources and prompts, and starts the server.
 
-支持两种执行模式（通过 ASEPRITE_MCP_MODE 环境变量切换）：
-- cli（默认）：通过 subprocess 调用 Aseprite CLI，无 UI、无状态持久
-- ws：通过 WebSocket 连接运行中的 Aseprite 实例，UI 可见、状态持久
+Two execution modes, switched with the ASEPRITE_MCP_MODE environment variable:
+- cli (default): runs the Aseprite CLI through subprocess; no UI, no persistent state
+- ws: connects over WebSocket to a running Aseprite instance; visible UI, persistent state
 """
 
 import sys
 import threading
 from pathlib import Path
 
-# 确保能导入 src 包
+# Make the src package importable
 sys.path.insert(0, str(Path(__file__).parent))
 
 from fastmcp import FastMCP
@@ -26,17 +26,17 @@ from src.prompts import register_prompts
 
 
 def create_server() -> FastMCP:
-    """创建并配置 FastMCP 服务器实例。
+    """Create and configure the FastMCP server instance.
 
     Returns:
-        配置好的 FastMCP 实例
+        the configured FastMCP instance
     """
-    # 加载配置
+    # Load configuration
     config = Config()
 
-    # 根据模式创建 runner
+    # Build the runner for the selected mode
     if config.mode == "ws":
-        # WebSocket 模式：启动 WebSocket server，等待 Aseprite 扩展连接
+        # WebSocket mode: start the WebSocket server and wait for the Aseprite extension
         from src.bridge import WebSocketBridge
 
         bridge = WebSocketBridge(host=config.ws_host, port=config.ws_port)
@@ -47,7 +47,7 @@ def create_server() -> FastMCP:
             )
             print("Falling back to CLI mode.", file=sys.stderr)
             runner = AsepriteRunner(config)
-            config.mode = "cli"  # 与 runner 保持一致（spec P0-8）
+            config.mode = "cli"  # keep this in step with the runner (spec P0-8)
         else:
             runner = WebSocketRunner(bridge=bridge, config=config)
             print(
@@ -57,10 +57,10 @@ def create_server() -> FastMCP:
                 file=sys.stderr,
             )
     else:
-        # CLI 模式（默认）
+        # CLI mode (default)
         runner = AsepriteRunner(config)
 
-    # 检查 Aseprite 是否可用（CLI 模式检查路径，WS 模式检查连接）
+    # Check Aseprite is usable (path in CLI mode, connection in ws mode)
     if not runner.check_aseprite_exists():
         if config.mode == "cli":
             print(
@@ -75,25 +75,26 @@ def create_server() -> FastMCP:
                 file=sys.stderr,
             )
 
-    # 创建核心组件
+    # Build the core components
     session_manager = SessionManager(config)
-    # 上一代进程遗留的会话目录不会被内存注册表看见，启动时先按时间扫一遍
+    # Session directories left by a previous process are invisible to the in-memory
+    # registry, so sweep the filesystem by age once at startup
     session_manager.cleanup_expired()
 
-    # 创建 FastMCP 服务器
+    # Create the FastMCP server
     mcp = FastMCP("AsepriteMCP")
 
-    # 注册工具（v2 三工具面；v1 的 register_*_tools 已随 src/tools/ 一起删除）
+    # Register tools (the three-tool v2 surface; the v1 register_*_tools went with src/tools/)
     register_v2_tools(mcp, session_manager, runner, config)
 
-    # 注册资源
+    # Register resources
     register_resources(mcp, session_manager)
 
-    # 注册提示
+    # Register prompts
     register_prompts(mcp)
 
-    # 启动会话清理后台线程
-    cleanup_interval = 300  # 每 5 分钟清理一次
+    # Start the background session-cleanup thread
+    cleanup_interval = 300  # sweep every 5 minutes
     cleanup_thread = threading.Thread(
         target=_cleanup_loop,
         args=(session_manager, cleanup_interval),
@@ -105,11 +106,11 @@ def create_server() -> FastMCP:
 
 
 def _cleanup_loop(session_manager: SessionManager, interval: int):
-    """会话清理循环（后台守护线程）。
+    """Session-cleanup loop (background daemon thread).
 
     Args:
-        session_manager: 会话管理器
-        interval: 清理间隔（秒）
+        session_manager: the session manager
+        interval: seconds between sweeps
     """
     import time
 
@@ -121,7 +122,7 @@ def _cleanup_loop(session_manager: SessionManager, interval: int):
             print(f"Session cleanup error: {e}", file=sys.stderr)
 
 
-# 模块级别实例，供 FastMCP CLI 使用
+# Module-level instance for the FastMCP CLI
 mcp = create_server()
 
 

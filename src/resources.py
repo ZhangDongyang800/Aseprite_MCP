@@ -20,7 +20,7 @@ _DEFAULT_PALETTE = [
 _PRESET_PALETTES = {
     "db16": {
         "name": "db16",
-        "description": "DawnBringer 16 色，适合简单项目",
+        "description": "DawnBringer 16 colours, good for simple projects",
         "colors": [
             "#140C1C", "#442434", "#30346D", "#4E4A4E",
             "#854C30", "#346524", "#D04648", "#757161",
@@ -30,7 +30,7 @@ _PRESET_PALETTES = {
     },
     "db32": {
         "name": "db32",
-        "description": "DawnBringer 32 色，最常用的平衡选择",
+        "description": "DawnBringer 32 colours, the most common balanced choice",
         "colors": [
             "#000000", "#222034", "#45283C", "#663931",
             "#8F563B", "#DF7126", "#D9A066", "#EEC39A",
@@ -44,7 +44,7 @@ _PRESET_PALETTES = {
     },
     "aap64": {
         "name": "aap64",
-        "description": "AAP-64，Adigun Polack 设计的现代像素艺术 64 色标准",
+        "description": "AAP-64, Adigun Polack's modern 64-colour standard for pixel art",
         # Source of the values: lospec.com/palette-list/aap-64 (the authoritative
         # 64-color standard)
         "colors": [
@@ -68,7 +68,7 @@ _PRESET_PALETTES = {
     },
     "nes": {
         "name": "nes",
-        "description": "NES 主机调色板，复古 8-bit 风格",
+        "description": "NES console palette, retro 8-bit look",
         "colors": [
             "#7C7C7C", "#0000FC", "#0000BC", "#4428BC",
             "#940084", "#A80020", "#A81000", "#881400",
@@ -88,7 +88,7 @@ _PRESET_PALETTES = {
     },
     "gameboy": {
         "name": "gameboy",
-        "description": "Game Boy 4 色绿色调色板，极简复古",
+        "description": "Game Boy 4-colour green palette, minimal retro",
         "colors": ["#0F380F", "#306230", "#8BAC0F", "#9BBC0F"],
     },
 }
@@ -96,39 +96,39 @@ _PRESET_PALETTES = {
 # Animation frame-duration presets (docs §7.2; duration_ms is a suggested value)
 _TIMING_PRESETS = {
     "idle": {
-        "type": "idle", "description": "待机呼吸",
+        "type": "idle", "description": "idle breathing",
         "frame_count_range": [2, 4], "duration_ms": 400,
     },
     "walk": {
-        "type": "walk", "description": "行走循环",
+        "type": "walk", "description": "walk cycle",
         "frame_count_range": [4, 6], "duration_ms": 125,
     },
     "run": {
-        "type": "run", "description": "跑步循环",
+        "type": "run", "description": "run cycle",
         "frame_count_range": [6, 8], "duration_ms": 80,
     },
     "attack_windup": {
-        "type": "attack_windup", "description": "攻击蓄力",
+        "type": "attack_windup", "description": "attack windup",
         "frame_count_range": [1, 2], "duration_ms": 70,
     },
     "attack_hit": {
-        "type": "attack_hit", "description": "攻击命中（保持更长）",
+        "type": "attack_hit", "description": "attack hit (held longer)",
         "frame_count_range": [1, 2], "duration_ms": 160,
     },
     "attack_recover": {
-        "type": "attack_recover", "description": "攻击恢复",
+        "type": "attack_recover", "description": "attack recovery",
         "frame_count_range": [1, 2], "duration_ms": 90,
     },
     "jump_start": {
-        "type": "jump_start", "description": "跳跃起跳",
+        "type": "jump_start", "description": "jump takeoff",
         "frame_count_range": [1, 2], "duration_ms": 70,
     },
     "jump_apex": {
-        "type": "jump_apex", "description": "跳跃顶点（保持）",
+        "type": "jump_apex", "description": "jump apex (held)",
         "frame_count_range": [1, 1], "duration_ms": 150,
     },
     "jump_land": {
-        "type": "jump_land", "description": "落地挤压",
+        "type": "jump_land", "description": "landing squash",
         "frame_count_range": [1, 2], "duration_ms": 100,
     },
 }
@@ -138,7 +138,7 @@ _TIMING_PRESETS = {
 _TILESET_TEMPLATES = {
     "grass_dirt_16x16": {
         "name": "grass_dirt_16x16",
-        "description": "草地+泥土瓦片（16x16，含中心/边缘块）",
+        "description": "grass + dirt tiles (16x16, centre and edge blocks)",
         "tile_size": 16,
         "grid": (
             "GGGGGGGGGGGGGGGG"
@@ -162,7 +162,7 @@ _TILESET_TEMPLATES = {
     },
     "dungeon_16x16": {
         "name": "dungeon_16x16",
-        "description": "地牢石墙瓦片（16x16）",
+        "description": "dungeon stone wall tiles (16x16)",
         "tile_size": 16,
         "grid": (
             "SSSSSSSSSSSSSSSS"
@@ -186,7 +186,7 @@ _TILESET_TEMPLATES = {
     },
     "water_grass_16x16": {
         "name": "water_grass_16x16",
-        "description": "水面+草地过渡瓦片（16x16）",
+        "description": "water + grass transition tiles (16x16)",
         "tile_size": 16,
         "grid": (
             "WWWWWWWWWWWWWWWW"
@@ -214,23 +214,23 @@ _TILESET_TEMPLATES = {
 _STANDARDS = {
     "size": {
         "category": "size",
-        "rules": "尺寸应为 8/16/32/64 或 8 的倍数（docs §2.1）",
+        "rules": "sizes should be 8/16/32/64 or a multiple of 8 (docs §2.1)",
         "allowed": [8, 16, 32, 64],
         "modulo": 8,
     },
     "palette": {
         "category": "palette",
-        "rules": "颜色数建议 4-32，每种主色需配阴影(×0.7)和高光(×1.3)（docs §4.1/§4.2）",
+        "rules": "aim for 4-32 colours; every base colour needs a shadow (x0.7) and a highlight (x1.3) (docs §4.1/§4.2)",
         "min_colors": 4,
         "max_colors": 32,
     },
     "timing": {
         "category": "timing",
-        "rules": "不要用统一帧率，不同动作不同时长（docs §7.2）",
+        "rules": "do not use one frame rate for everything; each action gets its own durations (docs §7.2)",
     },
     "pixel_art": {
         "category": "pixel_art",
-        "rules": "禁止意外抗锯齿(半透明像素)；避免 jaggies(阶梯不均)；避免枕头阴影（docs §5）",
+        "rules": "no accidental anti-aliasing (semi-transparent pixels); avoid jaggies (uneven steps); avoid pillow shading (docs §5)",
         "machine_checkable": ["semi_transparent", "isolated_pixels"],
         "visual_review": ["jaggies_shape", "pillow_shading"],
     },
@@ -250,52 +250,52 @@ _ANI_DIRS = ["forward", "reverse", "ping_pong", "ping_pong_reverse"]
 # Pixel-art drawing tips (grounded in professional game-art practice)
 _PIXEL_ART_TIPS = {
     "basic_rules": [
-        "使用有限调色板（4-8色），每种主色配阴影色和高光色——这是专业像素艺术的核心约束",
-        "轮廓统一使用最深色，通常为黑色 #000000",
-        "像素之间不要留空隙，保持填充完整",
-        "斜线保持45度角，阶梯均匀（如 1-2-2-1 排列），避免锯齿",
-        "线宽统一为1像素，不要出现2像素宽的线段",
-        "先规划整体布局再绘制，而不是边画边想",
+        "Use a limited palette (4-8 colours); every base colour gets a shadow and a highlight - that constraint is what makes pixel art read as professional",
+        "Use the darkest colour for the outline, usually black #000000",
+        "Leave no gaps between pixels; keep fills solid",
+        "Keep diagonals at 45 degrees with even steps (e.g. 1-2-2-1) and avoid jaggies",
+        "Keep line width at 1 pixel; never leave a 2-pixel-wide segment",
+        "Plan the whole layout before drawing instead of making it up as you go",
     ],
     "shading": [
-        "光源通常设在左上方，阴影画在右下方",
-        "阴影色 = 主色 RGB 各分量乘以 0.7",
-        "高光色 = 主色 RGB 各分量乘以 1.3（上限255）",
-        "阴影不要画太多，1-2像素宽即可，避免枕头式阴影",
-        "不要只沿轮廓涂阴影——先想好光源方向，再确定阴影区域",
-        "使用色相偏移：暗部偏冷色（蓝/紫），亮部偏暖色（黄/橙）",
+        "Light usually comes from the upper left; shadows fall to the lower right",
+        "Shadow colour = each RGB component of the base colour x0.7",
+        "Highlight colour = each RGB component x1.3 (capped at 255)",
+        "Keep shadows thin - 1-2 pixels - and avoid pillow shading",
+        "Do not just shade along the outline: fix the light direction first, then decide where the shadow falls",
+        "Shift hue as value changes: shadows toward cool (blue/violet), highlights toward warm (yellow/orange)",
     ],
     "outline": [
-        "轮廓要连续不断裂，线宽统一",
-        "把轮廓直接画进网格规划里（字符 K 通常留给轮廓色），没有单独的描边 op",
-        "内轮廓（主体边缘内侧）用主色的暗化版本，不要全用黑色",
-        "轮廓颜色可做色相偏移，比纯黑更有层次感",
+        "Outlines must be continuous, with a consistent width",
+        "Draw the outline into the grid plan itself (the character K is usually reserved for it); there is no separate outline op",
+        "For inner contours just inside the main shape, use a darkened base colour instead of black",
+        "A hue-shifted outline reads with more depth than pure black",
     ],
     "symmetry": [
-        "对称图形在规划网格时就要左右对齐，行内字符成对镜像，而不是画完再镜像",
-        "规划时先定轴线（16x16 画布的中轴是第 8 列），逐行照着写两遍",
-        "像素坐标按 x/y 双向检查，避免手工镜像时差 1 像素",
+        "For symmetric sprites, mirror the characters row by row while planning the grid instead of mirroring the finished image",
+        "Fix the axis first (column 8 is the centre of a 16x16 canvas) and write every row twice",
+        "Check coordinates in both x and y; hand-mirroring slips by one pixel easily",
     ],
     "animation": [
-        "先画关键帧（最极端姿势），再补中间帧——这是专业动画的标准流程",
-        "每帧只做小幅修改（1-3像素位移），保持动作连贯",
-        "行走循环：腿臂交替摆动，身体微微上下起伏",
-        "闪烁效果：缩放或明暗交替变化",
-        "用 inspect 的 frame 参数逐帧对比，参考前后帧确保动作连贯",
+        "Draw the key poses (the most extreme ones) first, then the in-betweens - the standard animation order",
+        "Change little between frames (1-3 pixels of movement) so the motion stays coherent",
+        "Walk cycle: legs and arms swing in opposition, the body bobs slightly",
+        "Twinkle effects: alternate scale or brightness",
+        "Use inspect's frame parameter to compare frame by frame and keep the motion continuous",
     ],
     "workflow": [
-        "专业流程：草图 → 线稿 → 平涂底色 → 阴影/高光 → 描边 → 导出",
-        "先把底色和高光阴影全部写进网格规划，再用 paint_grid 一次平涂",
-        "描边同样写进网格规划（轮廓色占一个字符），不靠事后处理",
-        "最后用 draw_pixel 做少量像素级修正",
-        "每步都用 inspect 检查效果（scale 放大便于观察）",
+        "Professional order: sketch -> line art -> flat fills -> shadow/highlight -> outline -> export",
+        "Put base colours, shadows and highlights into the grid plan, then paint it in one paint_grid call",
+        "The outline goes into the grid plan too (one character for the outline colour) rather than being added afterwards",
+        "Finish with a few draw_pixel corrections",
+        "Check every step with inspect (raise scale to see it enlarged)",
     ],
 }
 
 # Grid layouts for common pixel-art subjects (the LLM can follow these patterns)
 _SPRITE_PATTERNS = {
     "mushroom_16x16": {
-        "description": "蘑菇（16x16）",
+        "description": "mushroom (16x16)",
         "grid": (
             ".....KKKKKK....."
             "/....KRRRRRRK...."
@@ -311,7 +311,7 @@ _SPRITE_PATTERNS = {
         "colormap": "K=#000000,R=#E74C3C,W=#FFFFFF,S=#F5DEB3,.=transparent",
     },
     "heart_16x16": {
-        "description": "心形（16x16）",
+        "description": "heart (16x16)",
         "grid": (
             "................"
             "/..RR....RR....."
@@ -329,7 +329,7 @@ _SPRITE_PATTERNS = {
         "colormap": "R=#E74C3C,W=#FFB3B3,.=transparent",
     },
     "gem_16x16": {
-        "description": "宝石（16x16）",
+        "description": "gem (16x16)",
         "grid": (
             "................"
             "/.....KKKK......"

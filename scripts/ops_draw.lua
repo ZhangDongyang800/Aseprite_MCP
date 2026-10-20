@@ -1,4 +1,4 @@
--- ops_draw.lua：绘制 op（v2 内核）
+-- ops_draw.lua: drawing ops (v2 engine)
 if not _G._mcp_common_loaded then
     local d = debug.getinfo(1, "S").source:match("@(.*[/\\])")
     if d then pcall(dofile, d .. "mcp_common.lua") end

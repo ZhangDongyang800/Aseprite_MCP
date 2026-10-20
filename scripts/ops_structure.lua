@@ -1,13 +1,14 @@
--- ops_structure.lua：文档结构 op（加帧、命名 tag）
+-- ops_structure.lua: document structure ops (frames, named tags)
 if not _G._mcp_common_loaded then
     local d = debug.getinfo(1, "S").source:match("@(.*[/\\])")
     if d then pcall(dofile, d .. "mcp_common.lua") end
 end
 
--- 单位：`Frame.duration` 与这两个 op 的入参都是**秒**（src/v2/ops/structure_ops.py 的校验器
--- 原文 "every duration is in seconds"）。这里不要"顺手补一个 x1000"：Aseprite 内部按毫秒
--- 存，但 Lua 接口给的就是秒，实测 0.1/0.2/0.3 秒导出的 GIF 延时正是 100/200/300ms，
--- 由 tests/v2/test_e2e_v2.py::test_duration_unit_survives_into_an_exported_gif 钉住。
+-- Units: `Frame.duration` and the duration params of both ops are in **seconds**, exactly as the
+-- validator in src/v2/ops/structure_ops.py says ("every duration is in seconds"). Do not
+-- "helpfully" add a x1000 here: Aseprite stores milliseconds internally, but the Lua API hands
+-- back seconds, and a measured 0.1/0.2/0.3 s export really does carry 100/200/300 ms GIF delays,
+-- pinned by tests/v2/test_e2e_v2.py::test_duration_unit_survives_into_an_exported_gif.
 function _G._mcp_op_add_frames(sprite, params)
     local count = params.count
     if count < 1 then error("count must be >= 1") end

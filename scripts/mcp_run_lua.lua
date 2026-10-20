@@ -10,8 +10,8 @@ if not sprite then
     error("no sprite. Call create_sprite first.")
 end
 
--- code 以 params 传入的是 key=value 字符串；v2 改用文件旁路：
--- Python 写 <work>/_run_lua.lua 并把路径放入 code 参数
+-- code arriving as a key=value param string cannot carry a snippet, so v2 bypasses it with a file:
+-- Python writes <work>/_run_lua.lua and puts that path in the code_path param
 if app.params["code_path"] and app.params["code_path"] ~= "" then
     dofile(app.params["code_path"])
 else

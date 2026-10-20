@@ -1,36 +1,36 @@
--- mcp_common.lua：Live/CLI 双模式兼容辅助模块
--- 通过 dofile 加载，在全局命名空间设置辅助函数。
+-- mcp_common.lua: helper module shared by Live and CLI mode
+-- Loaded with dofile; installs its helpers in the global namespace.
 --
--- 用法：在脚本开头加一行 dofile(...)
---   Live 模式：extension/main.lua 在 dofile 主脚本前先 dofile 本文件
---   CLI 模式：主脚本自己 dofile 本文件（路径通过 scripts_dir 推导）
+-- Usage: add one dofile(...) line at the top of a script
+--   Live mode: extension/main.lua dofiles this file before the main script
+--   CLI mode: the main script dofiles it itself (path derived from scripts_dir)
 --
--- 核心函数：
---   _mcp_get_sprite(file): Live 模式优先用 app.activeSprite，CLI 模式用 app.open(file)
---   _mcp_maybe_save(sprite, file): Live 模式跳过保存，CLI 模式保存
---   _mcp_is_live: 是否在 Live 模式（WebSocket 扩展环境）
+-- Core functions:
+--   _mcp_get_sprite(file): Live prefers app.activeSprite, CLI uses app.open(file)
+--   _mcp_maybe_save(sprite, file): skipped in Live mode, saves in CLI mode
+--   _mcp_is_live: whether we are in Live mode (inside the WebSocket extension)
 
--- 防止重复加载
+-- Guard against double loading
 if _G._mcp_common_loaded then
     return
 end
 _G._mcp_common_loaded = true
 
--- Live 模式标志：由 extension/main.lua 设置
--- 如果 _G._mcp_live_mode 未设置，说明在 CLI 模式下
+-- Live-mode flag: set by extension/main.lua
+-- If _G._mcp_live_mode is unset, we are running under the CLI
 _G._mcp_is_live = (_G._mcp_live_mode == true)
 
--- 获取 sprite：Live 模式优先用 app.activeSprite
--- 参数:
---   file: .ase 文件路径（CLI 模式必需，Live 模式可选）
--- 返回:
---   sprite 对象，或 nil + 错误信息
+-- Get the sprite: Live mode prefers app.activeSprite
+-- Params:
+--   file: .ase path (required in CLI mode, optional in Live mode)
+-- Returns:
+--   a sprite, or nil + an error message
 _G._mcp_get_sprite = function(file)
-    -- Live 模式：优先用当前打开的 sprite
+    -- Live mode: prefer the sprite that is already open
     if _G._mcp_is_live and app.activeSprite then
         return app.activeSprite
     end
-    -- CLI 模式或 Live 模式但无 active sprite：从文件打开
+    -- CLI mode, or Live mode without an active sprite: open from the file
     if file and file ~= "" then
         local sprite = app.open(file)
         if not sprite then
@@ -38,38 +38,38 @@ _G._mcp_get_sprite = function(file)
         end
         return sprite
     end
-    -- Live 模式但无 active sprite 且无 file 参数
+    -- Live mode, no active sprite and no file argument
     if _G._mcp_is_live then
         return nil, "no active sprite. Call create_sprite first."
     end
     return nil, "no file specified and not in live mode"
 end
 
--- 保存 sprite：Live 模式跳过（UI 实时显示），CLI 模式保存
--- 参数:
---   sprite: sprite 对象
---   file: .ase 文件路径（CLI 模式必需）
+-- Save the sprite: skipped in Live mode (the UI shows changes live), saves in CLI mode
+-- Params:
+--   sprite: the sprite object
+--   file: .ase path (required in CLI mode)
 _G._mcp_maybe_save = function(sprite, file)
-    -- Live 模式下不自动保存：用户在 Aseprite 中能实时看到变化
-    -- 如果需要保存到文件，用户可显式调用 save_sprite 工具
+    -- No autosave in Live mode: the user watches every change in Aseprite as it happens
+    -- To write a file, the user calls the save_sprite tool explicitly
     if _G._mcp_is_live then
         return
     end
-    -- CLI 模式：保存到文件
+    -- CLI mode: write the file
     if file and file ~= "" and sprite then
         sprite:saveAs(file)
     end
 end
 
--- 获取或创建 sprite：用于 create_sprite 工具
--- Live 模式下如果已有 active sprite 且尺寸/模式匹配，则复用
--- 参数:
---   width, height, color_mode: 期望的尺寸和颜色模式
---   file: 输出文件路径（CLI 模式必需）
--- 返回:
---   sprite 对象, created (bool: true=新建, false=复用)
+-- Get or create a sprite: used by the create_sprite tool
+-- In Live mode, reuse the active sprite when its size/mode matches
+-- Params:
+--   width, height, color_mode: the size and color mode we want
+--   file: output path (required in CLI mode)
+-- Returns:
+--   the sprite, created (bool: true = new, false = reused)
 _G._mcp_get_or_create_sprite = function(width, height, color_mode, file)
-    -- 映射颜色模式字符串到 ColorMode 常量
+    -- Map the color-mode string onto a ColorMode constant
     local mode
     if color_mode == "rgb" then
         mode = ColorMode.RGB
@@ -81,24 +81,24 @@ _G._mcp_get_or_create_sprite = function(width, height, color_mode, file)
         mode = ColorMode.RGB
     end
 
-    -- Live 模式：检查是否可复用当前 sprite
+    -- Live mode: see whether the current sprite can be reused
     if _G._mcp_is_live and app.activeSprite then
         local s = app.activeSprite
         if s.width == width and s.height == height then
-            -- 尺寸匹配，复用
+            -- Size matches, reuse it
             return s, false
         end
-        -- 尺寸不匹配，关闭旧的，创建新的
-        -- 注意：不自动关闭，让用户决定。直接新建会切换 active sprite
+        -- Size differs: close the old one and create a new one
+        -- Note: left open for the user to decide; creating a sprite switches the active one
     end
 
-    -- 创建新 sprite
+    -- Create a new sprite
     local sprite = Sprite(width, height, mode)
     if not sprite then
         return nil, false
     end
 
-    -- CLI 模式：保存到文件
+    -- CLI mode: write the file
     if not _G._mcp_is_live and file and file ~= "" then
         sprite:saveAs(file)
     end
@@ -106,9 +106,9 @@ _G._mcp_get_or_create_sprite = function(width, height, color_mode, file)
     return sprite, true
 end
 
--- 解析十六进制颜色 #RRGGBB 为 r, g, b 值
--- 参数: hex (#RRGGBB 格式字符串，如 "#FF0000")
--- 返回: r, g, b 三个整数
+-- Parse a #RRGGBB hex color into r, g, b
+-- Params: hex (#RRGGBB string, e.g. "#FF0000")
+-- Returns: three integers, r, g, b
 _G._mcp_hex_to_rgb = function(hex)
     local r = tonumber(hex:sub(2, 3), 16)
     local g = tonumber(hex:sub(4, 5), 16)
@@ -116,9 +116,9 @@ _G._mcp_hex_to_rgb = function(hex)
     return r, g, b
 end
 
--- 获取指定图层/帧的 image，如果 cel 不存在则自动创建
--- 参数: sprite, layer_idx (1-based), frame_idx (1-based)
--- 返回: image 对象，或 nil + 错误信息
+-- Get the image of a layer/frame; a missing cel is created on demand
+-- Params: sprite, layer_idx (1-based), frame_idx (1-based)
+-- Returns: an image, or nil + an error message
 _G._mcp_get_target_image = function(sprite, layer_idx, frame_idx)
     local target_layer = sprite.layers[layer_idx]
     if not target_layer then
@@ -132,7 +132,7 @@ _G._mcp_get_target_image = function(sprite, layer_idx, frame_idx)
 end
 
 -- ============================================================
--- 共享绘制原语（供 draw_shape.lua、batch_edit.lua 等复用）
+-- Shared drawing primitives (reused by draw_shape.lua, batch_edit.lua, ...)
 -- ============================================================
 
 _G._mcp_pixel = function(image, x, y, color)
@@ -203,9 +203,10 @@ _G._mcp_ellipse = function(image, cx, cy, rx, ry, color, filled)
     end
 end
 
--- 洪泛填充（扫描线算法）
--- 逐像素 4 邻域 DFS 每像素要 new 一个 table 并 push 最多 4 次：4096² 画布就是六千多万次
--- 分配，必然撞上子进程超时。扫描线一次吃掉一整行连续像素，每个像素只被 get/put 各一次。
+-- Flood fill (scanline algorithm)
+-- A per-pixel 4-neighbour DFS news a table per pixel and pushes it up to 4 times: a 4096² canvas
+-- is 60M+ allocations, a guaranteed subprocess timeout. The scanline eats a whole row at a time
+-- and touches each pixel with exactly one get and one put.
 _G._mcp_fill = function(image, x, y, target_color, w, h)
     if x < 0 or y < 0 or x >= w or y >= h then return 0 end
     local src = image:getPixel(x, y)
@@ -216,7 +217,7 @@ _G._mcp_fill = function(image, x, y, target_color, w, h)
         local seed = table.remove(seeds)
         local sx, sy = seed[1], seed[2]
         if sy >= 0 and sy < h and sx >= 0 and sx < w and image:getPixel(sx, sy) == src then
-            -- 向左右扩张出整段 span
+            -- Expand left and right into a full span
             local left, right = sx, sx
             while left - 1 >= 0 and image:getPixel(left - 1, sy) == src do left = left - 1 end
             while right + 1 < w and image:getPixel(right + 1, sy) == src do right = right + 1 end
@@ -224,7 +225,7 @@ _G._mcp_fill = function(image, x, y, target_color, w, h)
                 image:drawPixel(px, sy, target_color)
             end
             filled = filled + (right - left + 1)
-            -- 上下两行里的 src 像素作为新种子（每行每段只入队一次）
+            -- src pixels in the rows above/below seed them (one push per span)
             for _, ny in ipairs({sy - 1, sy + 1}) do
                 if ny >= 0 and ny < h then
                     local pending = false
@@ -254,7 +255,7 @@ _G._mcp_clear_rect = function(image, x, y, w, h)
     end
 end
 
--- 渐变填充（linear horizontal/vertical, radial）
+-- Gradient fill (linear horizontal/vertical, radial)
 _G._mcp_gradient = function(image, x, y, w, h, from_c, to_c, mode, direction)
     for py = y, y+h-1 do
         for px = x, x+w-1 do
@@ -281,7 +282,7 @@ _G._mcp_gradient = function(image, x, y, w, h, from_c, to_c, mode, direction)
     end
 end
 
--- Box blur 滤镜
+-- Box blur filter
 _G._mcp_blur = function(image, radius, strength)
     local w, h = image.width, image.height
     local orig = Image(image)
@@ -312,7 +313,7 @@ _G._mcp_blur = function(image, radius, strength)
 end
 
 -- ============================================================
--- 选区 Mask 文件 I/O（CLI 模式跨进程持久化选区）
+-- Selection mask file I/O (keeps the selection across processes in CLI mode)
 -- ============================================================
 
 _G._mcp_save_selection = function(sprite, path)

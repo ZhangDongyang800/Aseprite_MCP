@@ -1,4 +1,4 @@
--- inspect.lua：只读感知。永远在临时副本上缩放/导出（修 P0-1）。
+-- inspect.lua: read-only perception. Always scales/exports on a temp copy (fixes P0-1).
 if not _G._mcp_common_loaded then
     local d = debug.getinfo(1, "S").source:match("@(.*[/\\])")
     if d then pcall(dofile, d .. "mcp_common.lua") end
@@ -23,7 +23,7 @@ for i, layer in ipairs(sprite.layers) do
 end
 local frames = {}
 for i, frame in ipairs(sprite.frames) do
-    -- Frame.duration 本身就是秒，与 add_frames/set_durations 的入参同一单位，原样报回
+    -- Frame.duration is already seconds, the same unit add_frames/set_durations take: report as is
     frames[i] = {number = i, duration = frame.duration}
 end
 local palette = {}
@@ -36,23 +36,23 @@ for i, tag in ipairs(sprite.tags) do
     tags[i] = {name = tag.name, from = tag.fromFrame.frameNumber, to = tag.toFrame.frameNumber}
 end
 
--- 临时副本：缩放与导出都不触碰原文档
+-- Temp copy: neither the resize nor the export ever touches the original document
 local preview = Sprite(sprite)
 
--- 多帧文档上 saveCopyAs 会写成 name1.png..nameN.png，Python 侧永远等不到约定的文件名。
--- 先把副本压成第 want 帧，原文档的帧数不受影响。
+-- On a multi-frame document saveCopyAs writes name1.png..nameN.png, never the agreed name.
+-- Collapse the copy to frame `want` first; the original document keeps all its frames.
 if want < 1 then want = 1 end
 if want > #preview.frames then want = #preview.frames end
 for i = #preview.frames, 1, -1 do
   if i ~= want then preview:deleteFrame(preview.frames[i]) end
 end
 
--- 先落一张 scale=1 原始尺寸副本供 Python 计算指标（避免放大/recolour 失真）
+-- First save a scale=1 copy at native size for Python's metrics (no upscale/recolour skew)
 if metrics_output and metrics_output ~= "" then
     preview:saveCopyAs(metrics_output)
 end
 
--- silhouette 视图：把副本上所有非透明像素涂黑（仅改副本）
+-- silhouette view: paint every non-transparent pixel of the copy black (copy only)
 if view == "silhouette" then
     local black = app.pixelColor.rgba(0, 0, 0, 255)
     for _, layer in ipairs(preview.layers) do
@@ -70,8 +70,8 @@ if view == "silhouette" then
     end
 end
 
--- 预览放大后的像素量必须有上限：4096² 画布 × scale=4 就是 1.6 亿像素，
--- 一次 inspect 会先把内存和带宽吃光，再把一张没人看得清的大图塞进对话。
+-- The upscaled preview must be capped: a 4096² canvas at scale=4 is 160M pixels, so one
+-- inspect eats all the memory and bandwidth and then stuffs an unreadable image into the chat.
 local MAX_PREVIEW_PIXELS = 4194304  -- 2048x2048
 local applied_scale = scale
 if scale > 1 then

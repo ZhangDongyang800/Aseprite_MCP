@@ -1,4 +1,4 @@
--- status.lua：显示 MCP Bridge 连接状态
+-- status.lua: show the MCP Bridge connection status
 
 local BRIDGE_HOST = os.getenv("ASEPRITE_WS_HOST") or "127.0.0.1"
 local BRIDGE_PORT = tonumber(os.getenv("ASEPRITE_WS_PORT") or "9001")

@@ -1,5 +1,5 @@
--- redo.lua：重做已撤销的操作
--- 仅在 Live 模式下有效（CLI 模式无 redo 栈）
+-- redo.lua: redo the operation that was undone
+-- Only meaningful in Live mode (CLI mode has no redo stack)
 
 if not _G._mcp_common_loaded then
     local script_dir = debug.getinfo(1, "S").source:match("@(.*[/\\])")

@@ -1,10 +1,10 @@
--- ops_session.lua：会话生命周期 op（v2 内核）
+-- ops_session.lua: session lifecycle ops (v2 engine)
 if not _G._mcp_common_loaded then
     local d = debug.getinfo(1, "S").source:match("@(.*[/\\])")
     if d then pcall(dofile, d .. "mcp_common.lua") end
 end
 
--- 新建文档：Live 始终新建，不复用活动 sprite（spec P0-7）
+-- New document: Live always creates one, never reuses the active sprite (spec P0-7)
 function _G._mcp_op_create_sprite(sprite, params)
     local mode = ColorMode.RGB
     if params.color_mode == "grayscale" then mode = ColorMode.GRAY
@@ -12,7 +12,7 @@ function _G._mcp_op_create_sprite(sprite, params)
     local created = Sprite(params.width, params.height, mode)
     if not created then error("cannot create sprite") end
     if params.file and params.file ~= "" then created:saveAs(params.file) end
-    _G._mcp_created_sprite = created  -- 供生成程序引导阶段引用
+    _G._mcp_created_sprite = created  -- handed to the generator's bootstrap stage
     return {width = created.width, height = created.height, color_mode = params.color_mode}
 end
 

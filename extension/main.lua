@@ -1,33 +1,33 @@
--- main.lua：Aseprite MCP Bridge 扩展入口
--- 通过 WebSocket 连接到 Python MCP 服务器，实现 AI 对 Aseprite 的实时操作。
+-- main.lua: entry point of the Aseprite MCP Bridge extension
+-- Talks to the Python MCP server over WebSocket so an AI can drive Aseprite live.
 --
--- 协议（基于文本行的键值对格式）：
---   请求（Python → Aseprite）: <id>\t<script_name>\t<key1=value1>\t<key2=value2>...
---   响应（Aseprite → Python）: <id>\t<success>\t<stdout_escaped>\t<stderr_escaped>
+-- Protocol (text lines carrying tab-separated key=value fields):
+--   Request (Python → Aseprite): <id>\t<script_name>\t<key1=value1>\t<key2=value2>...
+--   Response (Aseprite → Python): <id>\t<success>\t<stdout_escaped>\t<stderr_escaped>
 --
--- 注意：Aseprite Lua 环境没有 loadstring，因此不采用 Lua table literal。
+-- Note: the Aseprite Lua environment has no loadstring, so no Lua table literal here.
 --
--- 用法：
---   1. 在 Aseprite 中安装本扩展（File > Scripts > Open Scripts Folder，或 Extensions 对话框）
---   2. 点击菜单 File > Scripts > MCP Bridge: Toggle Connection
---   3. 确保 Python MCP 服务器已启动且 mode=ws
---   4. 连接成功后，AI 即可直接操作当前 Aseprite 实例
+-- Usage:
+--   1. Install the extension in Aseprite (File > Scripts > Open Scripts Folder, or Extensions)
+--   2. Click File > Scripts > MCP Bridge: Toggle Connection
+--   3. Make sure the Python MCP server is running with mode=ws
+--   4. Once connected, the AI can drive this Aseprite instance directly
 
 -- ============================================================
--- 配置：默认 WebSocket 服务器地址（可被环境变量覆盖）
+-- Config: default WebSocket server address (env vars can override it)
 -- ============================================================
 local BRIDGE_HOST = os.getenv("ASEPRITE_WS_HOST") or "127.0.0.1"
 local BRIDGE_PORT = tonumber(os.getenv("ASEPRITE_WS_PORT") or "9001")
 local BRIDGE_URL = "ws://" .. BRIDGE_HOST .. ":" .. BRIDGE_PORT
 
 -- ============================================================
--- 辅助函数：转义/反转义（用于响应中的 stdout/stderr）
+-- Helpers: escape/unescape (for stdout/stderr in the response)
 -- ============================================================
 
--- 转义 stdout/stderr 以便安全传输（按 \t 分隔的字段不能含原始制表符/换行）
+-- Escape stdout/stderr for transport (tab-separated fields cannot hold a raw tab/newline)
 local function escape_text(s)
     s = s or ""
-    s = s:gsub("\\", "\\\\")  -- 反斜杠先转义
+    s = s:gsub("\\", "\\\\")  -- escape backslashes first
     s = s:gsub("\t", "\\t")
     s = s:gsub("\n", "\\n")
     s = s:gsub("\r", "\\r")
@@ -35,14 +35,14 @@ local function escape_text(s)
 end
 
 -- ============================================================
--- 消息分发：执行 Lua 脚本并捕获 print 输出
+-- Message dispatch: run a Lua script and capture its print output
 -- ============================================================
 
--- 设置 app.params（兼容 CLI 脚本的 app.params["xxx"] 读取方式）
--- 返回 true 表示成功，false + err 表示失败
+-- Set app.params (matching how CLI scripts read app.params["xxx"])
+-- Returns true on success, false + err on failure
 local function set_script_params(params)
     params = params or {}
-    -- 每次请求都从空表开始：app.params 是进程级状态，残留会让下一个请求读到上一次的参数
+    -- Fresh table every request: app.params survives, so leftovers leak into the next call
     local ok, err = pcall(function()
         local str_params = {}
         for k, v in pairs(params) do
@@ -51,7 +51,7 @@ local function set_script_params(params)
         app.params = str_params
     end)
     if ok then return true end
-    -- app.params 整体替换失败时退回逐字段写入
+    -- Fall back to writing field by field when app.params cannot be replaced wholesale
     ok, err = pcall(function()
         for k, v in pairs(params) do
             app.params[k] = tostring(v)
@@ -61,7 +61,7 @@ local function set_script_params(params)
     return false, err
 end
 
--- 反转义 Python 端转义的 key/value
+-- Unescape the key/value strings escaped by the Python side
 local function unescape_value(s)
     s = s or ""
     local result = {}
@@ -93,7 +93,7 @@ local function unescape_value(s)
     return table.concat(result)
 end
 
--- 按 \t 分隔消息，同时处理转义序列（\t、\n、\r、\\、\=）
+-- Split on \t while resolving escape sequences (\t, \n, \r, \\, \=)
 local function split_message(message)
     local parts = {}
     local current = {}
@@ -118,7 +118,7 @@ local function split_message(message)
                 table.insert(current, "\\")
                 i = i + 2
             else
-                -- 不认识的转义，保留反斜杠
+                -- Unknown escape: keep the backslash
                 table.insert(current, c)
                 i = i + 1
             end
@@ -135,21 +135,21 @@ local function split_message(message)
     return parts
 end
 
--- 处理单条请求消息，返回响应字符串
+-- Handle one request message and return the response string
 local function handle_request(message)
-    -- 按 \t 分割：id, script_name, [key1=value1, key2=value2, ...]
+    -- Split on \t: id, script_name, [key1=value1, key2=value2, ...]
     local parts = split_message(message)
 
     local req_id = parts[1]
     local script_name = parts[2]
 
     if not req_id or not script_name then
-        -- 协议要求固定 4 个字段；少写一个字段会让 Python 端无法解析并挂到超时
+        -- The protocol fixes 4 fields; drop one and Python cannot parse it and hangs to timeout
         return req_id and (req_id .. "\tfalse\t\terror: invalid request format\t")
             or "error\tfalse\t\tno request id\t"
     end
 
-    -- 解析参数对 key=value
+    -- Parse the key=value pairs
     local params = {}
     for i = 3, #parts do
         local part = parts[i]
@@ -161,30 +161,30 @@ local function handle_request(message)
         end
     end
 
-    -- 查找脚本文件
-    -- Python 端发送的是脚本文件的绝对路径，因此 script_name 即 script_path
+    -- Find the script file
+    -- Python sends the script's absolute path, so script_name is script_path
     local script_path = script_name
 
-    -- 检查脚本是否存在
-    -- Aseprite 路径分隔符兼容：Windows 路径用反斜杠，但 Lua 字符串里不受影响
+    -- Check that the script exists
+    -- Path separators: Windows paths use backslashes, which is harmless inside a Lua string
     local file = io.open(script_path, "r")
     if not file then
         return req_id .. "\tfalse\t\terror: script not found: " .. script_path .. "\t"
     end
     file:close()
 
-    -- 设置 app.params
+    -- Set app.params
     local params_ok, params_err = set_script_params(params)
     if not params_ok then
         return req_id .. "\tfalse\t\terror: cannot set app.params: " .. tostring(params_err) .. "\t"
     end
 
-    -- Live 模式标志：标记当前在 WebSocket 扩展环境中
-    -- mcp_common.lua 会读取这个标志来决定是否使用 app.activeSprite
+    -- Live-mode flag: marks the current environment as the WebSocket extension
+    -- mcp_common.lua reads this flag to decide whether to use app.activeSprite
     _G._mcp_live_mode = true
 
-    -- 先加载公共辅助模块（提供 _mcp_get_sprite / _mcp_maybe_save 等函数）
-    -- 推导 common 脚本路径：与主脚本在同一目录
+    -- Load the shared helpers first (they provide _mcp_get_sprite / _mcp_maybe_save, ...)
+    -- Derive the common script path: same directory as the main script
     local common_path = script_path:gsub("[^/\\]+$", "mcp_common.lua")
     local common_file = io.open(common_path, "r")
     if common_file then
@@ -192,7 +192,7 @@ local function handle_request(message)
         pcall(dofile, common_path)
     end
 
-    -- 捕获 print 输出
+    -- Capture print output
     local captured = {}
     local old_print = _G.print
     _G.print = function(...)
@@ -204,7 +204,7 @@ local function handle_request(message)
         captured[#captured + 1] = table.concat(strs, "\t")
     end
 
-    -- 执行脚本
+    -- Run the script
     local success = true
     local err_msg = ""
     local ok2, err2 = pcall(function()
@@ -215,23 +215,23 @@ local function handle_request(message)
         err_msg = tostring(err2)
     end
 
-    -- 恢复 print
+    -- Restore print
     _G.print = old_print
 
     local stdout = table.concat(captured, "\n")
     local stderr = success and "" or err_msg
 
-    -- 构造响应
+    -- Build the response
     return req_id .. "\t" .. tostring(success) .. "\t" .. escape_text(stdout) .. "\t" .. escape_text(stderr)
 end
 
 -- ============================================================
--- WebSocket 连接管理
+-- WebSocket connection management
 -- ============================================================
 
--- 检查是否已连接
+-- Check whether we are already connected
 if _G._mcp_ws then
-    -- 已连接，关闭连接
+    -- Already connected: close the connection
     local ws = _G._mcp_ws
     _G._mcp_ws = nil
     pcall(function() ws:close() end)
@@ -239,7 +239,7 @@ if _G._mcp_ws then
     return
 end
 
--- 创建 WebSocket client
+-- Create the WebSocket client
 local ws = WebSocket{
     url = BRIDGE_URL,
     deflate = false,
@@ -247,27 +247,27 @@ local ws = WebSocket{
     maxreconnectwait = 3.0,
     onreceive = function(mt, data)
         if mt == WebSocketMessageType.OPEN then
-            -- 连接建立
+            -- Connection established
             app.alert("MCP Bridge: Connected to " .. BRIDGE_URL)
         elseif mt == WebSocketMessageType.TEXT then
-            -- 收到请求，处理并回传响应
+            -- Request received: handle it and send the response back
             local response = handle_request(data)
             if response and _G._mcp_ws then
                 _G._mcp_ws:sendText(response)
             end
         elseif mt == WebSocketMessageType.CLOSE then
-            -- 连接关闭
+            -- Connection closed
             _G._mcp_ws = nil
             app.alert("MCP Bridge: Connection closed")
         end
     end
 }
 
--- 启动连接
+-- Start the connection
 ws:connect()
 _G._mcp_ws = ws
 
--- 提示用户
+-- Prompt the user
 app.alert("MCP Bridge: Connecting to " .. BRIDGE_URL .. " ...\n"
     .. "Click again to disconnect.\n"
     .. "Make sure the MCP server is running with ASEPRITE_MCP_MODE=ws")

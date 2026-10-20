@@ -1,6 +1,6 @@
--- undo.lua：撤销上一步操作
--- Live 模式: app.command.Undo()
--- CLI 模式: 由 Python 端用文件备份实现
+-- undo.lua: undo the last operation
+-- Live mode: app.command.Undo()
+-- CLI mode: done by Python with a file backup
 
 if not _G._mcp_common_loaded then
     local script_dir = debug.getinfo(1, "S").source:match("@(.*[/\\])")

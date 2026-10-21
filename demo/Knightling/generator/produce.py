@@ -10,7 +10,7 @@
   apply_operations，24 帧的完整动画（结构 + 像素）是一个原子批量 = 一次 Aseprite 进程；
 - 每帧一个 paint_grid，网格文件写在**会话工作目录里**，所以免 confirmed=true；
 - inspect 逐帧读 metrics 做美术质检（孤立像素 / 近似色 / 脚底基线 / 左右体积对称）；
-- run_lua 只保留工具面没有的能力：导出精灵表与 GIF 源帧。
+- export op 负责精灵表与逐帧 PNG，run_lua 不再参与这条产出链。
 """
 
 import asyncio
@@ -36,25 +36,6 @@ FRAMES = len(ch.DIRS) * ch.FRAMES
 TAGS = [f"walk_{d}" for d in ch.DIRS]
 DUR = 0.12                                   # 行走循环每帧等长（set_durations 的单位是秒）
 FOOT = 28                                    # 脚底基线：24 帧都必须落在这一行
-
-# 工具面没有导出 op：精灵表 + GIF 源帧只能靠 run_lua。
-# saveCopyAs 的入参必须带 .png 后缀，且在多帧文档上会写成 frame1.png..frameN.png（不会写
-# frame.png）——这里要的正是这套名字；后缀丢了 Aseprite 会静默不落地。
-EXPORT = f"""
-local s = app.activeSprite
-app.command.ExportSpriteSheet({{
-  ui = false,
-  type = SpriteSheetType.ROWS,
-  columns = {ch.FRAMES},
-  textureFilename = "{(BUILD / 'sheet.png').as_posix()}",
-  dataFilename = "{(BUILD / 'sheet.json').as_posix()}",
-  dataFormat = SpriteSheetDataFormat.JSON_HASH,
-}})
-s:saveCopyAs("{(BUILD / 'frames' / 'frame.png').as_posix()}")
-print("EXPORT frames=" .. #s.frames .. " tags=" .. #s.tags
-      .. " dur0=" .. s.frames[1].duration)
-"""
-
 
 def _fail(report, message):
     report.append(message)
@@ -116,10 +97,18 @@ async def produce():
         print(f"batch: {len(ops)} ops in one atomic batch, {r['timing_ms']}ms, "
               f"warnings={r.get('warnings') or 'none'}")
 
-        r = (await c.call_tool("run_lua", {"session_id": sid, "code": EXPORT,
-                                           "unsafe": True, "confirmed": True})).structured_content
+        r = (await c.call_tool("apply_operations", {
+            "session_id": sid,
+            "ops": [
+                {"op": "export", "format": "sheet",
+                 "output": str(BUILD / "sheet.png"),
+                 "layout": "rows", "columns": ch.FRAMES},
+                {"op": "export", "format": "frames",
+                 "output": str(BUILD / "frames" / "frame.png")},
+            ],
+        })).structured_content
         assert r["ok"], r["error"]
-        print("export:", r["op_results"][0]["data"]["stdout"].strip().splitlines()[-1])
+        print(f"export: {len(r['artifacts'])} artifacts, changed={r['changed']}")
         missing = [f"frame{n}.png" for n in range(1, FRAMES + 1)
                    if not (BUILD / "frames" / f"frame{n}.png").exists()]
         assert not missing and (BUILD / "sheet.png").exists(), \

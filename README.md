@@ -49,7 +49,8 @@ covered in the *How to use* section below.
 
 All four demos were drawn by an AI through this MCP — every pixel written by `apply_operations`'s
 `paint_grid`, and the structural work (adding frames, setting durations, building tags) goes
-through ops too. `run_lua` is left doing only what the op surface has no answer for: exporting.
+through ops too. Knightling now exports through the new `export` op; the other three
+generators still use `run_lua` for their custom per-frame naming.
 
 | Character | ↓ Down | ↑ Up | ← Left | → Right | Sprite Sheet |
 |:--|:--:|:--:|:--:|:--:|:--:|
@@ -119,9 +120,12 @@ Exactly three MCP tools:
 | `inspect` | Read-only perception: returns a canvas preview image plus quantitative metrics (palette, color count, bounding box, coverage, semi-transparent and isolated pixels). On animated documents, `frame=N` steps through frames one at a time. Never modifies the document. |
 | `run_lua` | Escape hatch: run arbitrary Lua. Requires `unsafe=true` and `confirmed=true`. |
 
-Ops are named operations registered in `src/v2/ops/` (Pydantic parameter models) with their Lua implementations in `scripts/ops_*.lua`. Built-in ops: `create_sprite`, `open_sprite`, `save_sprite`, `close_session`, `draw_pixel`, `draw_rect`, `fill_region`, `clear_canvas`, `undo`, `redo`, plus the structural ones — `add_frames`, `set_durations`, `add_tag` and `paint_grid`.
+Ops are named operations registered in `src/v2/ops/` (Pydantic parameter models) with their Lua implementations in `scripts/ops_*.lua`. Built-in ops: `create_sprite`, `open_sprite`, `save_sprite`, `close_session`, `draw_pixel`, `draw_rect`, `fill_region`, `clear_canvas`, `undo`, `redo`, plus the structural ones — `add_frames`, `set_durations`, `add_tag`, `paint_grid`, and `export` (`png`/`gif`/`sheet`/`frames`; it writes artifact files but never changes the document).
 
 `paint_grid` takes a path to a Lua file returning `{palette = {b = "#F0A65A"}, rows = {"..bb..", ...}}`, one character per pixel, `.` for transparent. It keeps whole-sprite art out of the tool call: a 32×32 four-frame sheet costs a few hundred tokens through `paint_grid` instead of tens of thousands as `draw_pixel` ops, and still runs validated and inside the same rollback as everything else.
+
+`export` writes the deliverable without touching the document:
+`{"op": "export", "format": "gif", "output": "walk.gif"}`; `format="png"` needs a `frame` on multi-frame sprites, while `format="frames"` writes `name1.png…nameN.png` and `format="sheet"` takes `layout` / `columns` / `padding` / `scale`. Output paths are resolved to absolute; put export last (or in its own batch) so a later failing op cannot leave an uncommitted artifact.
 
 ```python
 apply_operations(ops=[

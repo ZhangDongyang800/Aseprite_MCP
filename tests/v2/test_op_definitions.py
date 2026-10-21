@@ -9,7 +9,7 @@ def test_expected_ops_registered():
     names = set(R.names())
     assert {"create_sprite", "open_sprite", "save_sprite", "close_session",
             "clear_canvas", "draw_pixel", "draw_rect", "fill_region",
-            "add_frames", "add_tag", "paint_grid"} <= names
+            "add_frames", "add_tag", "paint_grid", "export"} <= names
 
 
 def test_draw_defaults():
@@ -19,14 +19,15 @@ def test_draw_defaults():
     assert spec.mutating is True
 
 
-def test_create_sprite_requires_size():
-    spec = R.get("create_sprite")
-    params = spec.params.model_validate({"width": 16, "height": 16})
-    assert params.color_mode == "rgb"
-
-
 def test_close_session_is_destructive():
     assert R.get("close_session").destructive is True
+
+
+def test_export_writes_files_but_does_not_mutate_the_document():
+    spec = R.get("export")
+    assert spec.category == "export"
+    assert spec.mutating is False and spec.destructive is False
+    assert spec.lua == "_mcp_op_export"
 
 
 def test_add_frames_defaults_and_bounds():

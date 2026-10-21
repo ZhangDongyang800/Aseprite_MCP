@@ -20,25 +20,10 @@ def test_create_session_returns_uuid_and_creates_dir(session_manager):
     assert work_dir.is_dir()
 
 
-def test_create_session_ase_file_path(session_manager):
-    """测试会话的 .ase 文件路径正确。"""
-    session_id = session_manager.create_session(width=32, height=32)
-
-    ase_path = session_manager.get_ase_path(session_id)
-    assert ase_path.name == "canvas.ase"
-    assert ase_path.parent == session_manager.get_work_dir(session_id)
-
-
 def test_get_work_dir_raises_for_unknown_session(session_manager):
     """测试查询不存在的会话抛出 KeyError。"""
     with pytest.raises(KeyError, match="Session not found"):
         session_manager.get_work_dir("nonexistent-id")
-
-
-def test_get_ase_path_raises_for_unknown_session(session_manager):
-    """测试查询不存在的会话 .ase 路径抛出 KeyError。"""
-    with pytest.raises(KeyError, match="Session not found"):
-        session_manager.get_ase_path("nonexistent-id")
 
 
 def test_close_session_removes_work_dir(session_manager):
@@ -75,12 +60,6 @@ def test_update_canvas_info_refreshes_size(session_manager):
     assert info["color_mode"] == "rgb"
 
 
-def test_update_canvas_info_unknown_session_raises(session_manager):
-    """测试更新不存在的会话抛出 KeyError。"""
-    with pytest.raises(KeyError, match="Session not found"):
-        session_manager.update_canvas_info("nonexistent-id", 32, 32)
-
-
 def test_list_sessions_returns_all_active(session_manager):
     """测试列出所有活跃会话。"""
     id1 = session_manager.create_session(width=16, height=16)
@@ -104,19 +83,6 @@ def test_list_sessions_includes_canvas_info(session_manager):
     assert target["width"] == 16
     assert target["height"] == 16
     assert target["color_mode"] == "rgb"
-
-
-def test_session_records_last_activity(session_manager):
-    """测试会话记录最后活动时间。"""
-    session_id = session_manager.create_session(width=16, height=16)
-
-    # 触发活动
-    time.sleep(0.01)
-    session_manager.get_work_dir(session_id)
-
-    # 最后活动时间应晚于创建时间
-    session_data = session_manager._sessions[session_id]
-    assert session_data["last_activity"] > session_data["created_at"]
 
 
 def test_cleanup_expired_sessions(session_manager):

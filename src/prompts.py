@@ -58,6 +58,8 @@ run_lua(session_id, code, unsafe=False, confirmed=False)
         fill_region(x, y, color) / paint_grid(path, x, y) / clear_canvas
   结构  add_frames(count, duration, duplicate) / set_durations(durations) /
         add_tag(name, from_frame, to_frame)
+  输出  export(format="png"|"gif"|"sheet"|"frames", output, scale=1,
+         frame, tag, layout, columns, padding) —— 只写文件，不改文档
   历史  undo / redo（必须单独成批，不能和其他 op 混在一批里）
   所有绘制类 op 都接受 layer（1 起）和 frame（1 起），默认都是 1。
 
@@ -173,6 +175,14 @@ def register_prompts(mcp):
   apply_operations(ops=[{{"op": "save_sprite"}}]) —— 不给 path 就落回会话的 .ase。
   收工要销毁会话时 close_session 也是破坏性 op，同样需要 confirmed=true。
 
+第6步：导出交付物（需要文件时）
+  apply_operations(ops=[{{"op": "export", "format": "png",
+                         "output": "<绝对路径>.png", "scale": 4}}])
+  - 单帧 png 用 frame=N；多帧精灵表用 format="sheet"；动画用 format="gif"；
+    逐帧参考图用 format="frames"（会写成 name1.png..nameN.png）。
+  - export 只写文件、不改文档，不需要 confirmed；产物路径在返回的 artifacts 里。
+  - 输出目录必须已存在；格式和扩展名必须匹配（png/sheet/frames → .png，gif → .gif）。
+
 ══════════════════════════════════════════
 坐标网格规划模板（{size}）：
 ══════════════════════════════════════════
@@ -196,8 +206,9 @@ op 使用优先级：
   2. draw_pixel    ← 仅修正1-3个像素
   3. draw_rect     ← 画背景大色块 / 结构块
   4. fill_region   ← 已有区域的同色填充
-  5. clear_canvas  ← 推倒重来（破坏性，需 confirmed=true）
-  6. run_lua       ← 仅限新建图层等 op 做不到的事（需 unsafe + confirmed）
+  5. export        ← 交付 PNG/GIF/精灵表，不改文档（需要文件时最后调用）
+  6. clear_canvas  ← 推倒重来（破坏性，需 confirmed=true）
+  7. run_lua       ← 仅限新建图层等 op 做不到的事（需 unsafe + confirmed）
 """
 
     @mcp.prompt

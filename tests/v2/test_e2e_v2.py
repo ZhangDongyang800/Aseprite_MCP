@@ -201,12 +201,13 @@ def test_duration_unit_survives_into_an_exported_gif(api, tmp_path):
     assert env.ok, env.error
 
     gif = tmp_path / "timing.gif"
-    probe = api.run_lua(
-        session_id=env.session_id,
-        code=f'app.activeSprite:saveCopyAs("{gif.as_posix()}") print("EXPORT gif")',
-        unsafe=True, confirmed=True)
+    probe = api.apply(ops=[
+        {"op": "export", "format": "gif", "output": str(gif)},
+    ], session_id=env.session_id)
     assert probe.ok, probe.error
-    assert gif.exists(), "saveCopyAs 没有产出 GIF"
+    assert probe.changed is False
+    assert [a.path for a in probe.artifacts] == [str(gif)]
+    assert gif.exists(), "export 没有产出 GIF"
 
     with Image.open(gif) as anim:
         assert anim.n_frames == 3
@@ -219,6 +220,89 @@ def test_duration_unit_survives_into_an_exported_gif(api, tmp_path):
 
     meta, _ = _metrics(api, env.session_id)
     assert [round(f["duration"], 3) for f in meta["frames"]] == [0.1, 0.2, 0.3]
+
+
+@skip_no_aseprite
+def test_export_png_scale_frames_and_sheet(api, tmp_path):
+    """One op covers the deliverable formats; scale must stay nearest-neighbour."""
+    from PIL import Image
+
+    env = api.apply(ops=[
+        {"op": "create_sprite", "width": 4, "height": 4},
+        {"op": "add_frames", "count": 2, "duration": 0.1},
+    ])
+    assert env.ok, env.error
+    sid = env.session_id
+    assert api.apply(ops=[
+        {"op": "draw_pixel", "x": 0, "y": 0, "color": "#FF0000"},
+        {"op": "draw_pixel", "x": 1, "y": 0, "color": "#00FF00"},
+        {"op": "draw_pixel", "x": 0, "y": 1, "color": "#0000FF"},
+        {"op": "draw_pixel", "x": 1, "y": 1, "color": "#FFFFFF"},
+    ], session_id=sid).ok
+
+    single = tmp_path / "frame.png"
+    png = api.apply(ops=[
+        {"op": "export", "format": "png", "frame": 1,
+         "output": str(single), "scale": 2},
+    ], session_id=sid)
+    assert png.ok, png.error
+    assert png.changed is False
+    with Image.open(single) as img:
+        rgba = img.convert("RGBA")
+        assert img.size == (8, 8)
+        # 2x2 nearest blocks: (0,0) red fills its block, (2,0) green, etc.
+        assert rgba.getpixel((0, 0)) == (255, 0, 0, 255)
+        assert rgba.getpixel((1, 1)) == (255, 0, 0, 255)
+        assert rgba.getpixel((2, 0)) == (0, 255, 0, 255)
+        assert rgba.getpixel((0, 2)) == (0, 0, 255, 255)
+        assert rgba.getpixel((2, 2)) == (255, 255, 255, 255)
+
+    frames_dir = tmp_path / "frames"
+    frames_dir.mkdir()
+    frames = api.apply(ops=[
+        {"op": "export", "format": "frames", "output": str(frames_dir / "frame.png")},
+    ], session_id=sid)
+    assert frames.ok, frames.error
+    assert len(frames.artifacts) == 3
+    assert {a.role for a in frames.artifacts} == {"frame"}
+    assert sorted(p.name for p in frames_dir.glob("frame*.png")) == [
+        "frame1.png", "frame2.png", "frame3.png",
+    ]
+
+    sheet = tmp_path / "sheet.png"
+    packed = api.apply(ops=[
+        {"op": "export", "format": "sheet", "output": str(sheet),
+         "layout": "rows", "columns": 2, "padding": 1},
+    ], session_id=sid)
+    assert packed.ok, packed.error
+    with Image.open(sheet) as img:
+        assert img.size == (9, 9)
+
+
+@skip_no_aseprite
+def test_export_tag_filters_frames(api, tmp_path):
+    """A tag export must contain exactly the tag's frames, not the whole document."""
+    from PIL import Image
+
+    env = api.apply(ops=[
+        {"op": "create_sprite", "width": 4, "height": 4},
+        {"op": "add_frames", "count": 3, "duration": 0.1},
+        {"op": "add_tag", "name": "mid", "from_frame": 2, "to_frame": 3},
+    ])
+    assert env.ok, env.error
+    sid = env.session_id
+    assert api.apply(ops=[
+        {"op": "draw_pixel", "x": 1, "y": 1, "color": "#FF0000", "frame": 2},
+        {"op": "draw_pixel", "x": 2, "y": 2, "color": "#00FF00", "frame": 3},
+    ], session_id=sid).ok
+
+    gif = tmp_path / "tag.gif"
+    out = api.apply(ops=[
+        {"op": "export", "format": "gif", "output": str(gif), "tag": "mid"},
+    ], session_id=sid)
+    assert out.ok, out.error
+    with Image.open(gif) as anim:
+        assert anim.n_frames == 2
 
 
 @skip_no_aseprite

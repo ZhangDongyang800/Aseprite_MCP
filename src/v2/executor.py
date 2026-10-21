@@ -5,6 +5,7 @@ import re
 import shutil
 import threading
 import time
+from pathlib import Path
 
 from src.v2.compile import compile_ops, parse_result_stdout
 from src.v2.registry import REGISTRY
@@ -262,6 +263,7 @@ class Engine:
             file_path=path,
             scripts_dir=self.config.scripts_dir,
             atomic=atomic,
+            save_document=mutating,
         )
         batch = work / "_batch.lua"
         batch.write_text(source, encoding="utf-8")
@@ -332,6 +334,17 @@ class Engine:
             before.unlink(missing_ok=True)
 
         artifacts = self._collect_artifacts(payload)
+        for artifact in artifacts:
+            output = Path(artifact.path)
+            if not output.is_file() or output.stat().st_size == 0:
+                if snapshot:
+                    self._restore_snapshot(before, path)
+                return Envelope.failure(
+                    ErrorCode.FILE_ERROR,
+                    f"export reported success but wrote no usable file: {artifact.path}",
+                    hint="check that the output directory exists and the format matches the extension",
+                    session_id=session_id, mode=self.config.mode,
+                )
         # CLI can only undo what it snapshotted: a first batch that created the canvas has
         # no backup behind it, and claiming otherwise makes the caller trust a lie.
         if snapshot:
@@ -381,10 +394,15 @@ class Engine:
         out: list[Artifact] = []
         for r in payload.get("ops", []):
             data = r.get("data") or {}
-            if isinstance(data, dict) and data.get("artifact_path"):
-                out.append(Artifact(
-                    kind=data.get("artifact_kind", "png"),
-                    path=data["artifact_path"],
-                    role=data.get("artifact_role", r.get("op", "output")),
-                ))
+            if not isinstance(data, dict):
+                continue
+            kind = data.get("artifact_kind", "png")
+            role = data.get("artifact_role", r.get("op", "output"))
+            paths = data.get("artifact_paths")
+            if isinstance(paths, list):
+                for path in paths:
+                    if isinstance(path, str) and path:
+                        out.append(Artifact(kind=kind, path=path, role=role))
+            elif isinstance(data.get("artifact_path"), str) and data["artifact_path"]:
+                out.append(Artifact(kind=kind, path=data["artifact_path"], role=role))
         return out

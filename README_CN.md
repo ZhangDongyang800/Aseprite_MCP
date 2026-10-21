@@ -45,8 +45,8 @@ TRAE、Claude Desktop、Cursor、Qoder 用的是同一份配置。
 ##  示例演示
 
 四个 demo 都是 AI 通过本 MCP 现场绘制的像素素材：像素全部由 `apply_operations` 的
-`paint_grid` 写入，帧结构（加帧、设时长、建 tag）也全部走 op 面；`run_lua` 只留给导出，
-因为工具面没有 export op。
+`paint_grid` 写入，帧结构（加帧、设时长、建 tag）也全部走 op 面；Knightling 已切到新的
+`export` op，其余三个生成器的自定义逐帧命名仍走 `run_lua`。
 
 | 角色 | ↓ 下 | ↑ 上 | ← 左 | → 右 | 精灵表 |
 |:--|:--:|:--:|:--:|:--:|:--:|
@@ -110,9 +110,11 @@ TRAE、Claude Desktop、Cursor、Qoder 用的是同一份配置。
 | `inspect` | 只读感知：返回画布预览图与量化指标（调色板、颜色数、包围盒、覆盖率、半透明与孤立像素）。动画文档用 `frame=N` 逐帧查看。永不修改文档。 |
 | `run_lua` | 逃逸舱：执行任意 Lua。需要 `unsafe=true` 且 `confirmed=true`。 |
 
-op 是注册在 `src/v2/ops/` 中的命名操作（Pydantic 参数模型），其 Lua 实现位于 `scripts/ops_*.lua`。内置 op：`create_sprite`、`open_sprite`、`save_sprite`、`close_session`、`draw_pixel`、`draw_rect`、`fill_region`、`clear_canvas`、`undo`、`redo`，以及结构类的 `add_frames`、`set_durations`、`add_tag`、`paint_grid`。
+op 是注册在 `src/v2/ops/` 中的命名操作（Pydantic 参数模型），其 Lua 实现位于 `scripts/ops_*.lua`。内置 op：`create_sprite`、`open_sprite`、`save_sprite`、`close_session`、`draw_pixel`、`draw_rect`、`fill_region`、`clear_canvas`、`undo`、`redo`，以及结构类的 `add_frames`、`set_durations`、`add_tag`、`paint_grid` 和 `export`（`png`/`gif`/`sheet`/`frames`；只写产物文件，不改文档）。
 
 `paint_grid` 接收一个 Lua 数据文件路径，文件返回 `{palette = {b = "#F0A65A"}, rows = {"..bb..", ...}}`，一个字符一个像素，`.` 表示透明。整张图的像素因此不必经过工具调用：32×32 四帧走 `paint_grid` 只花几百 token，走 `draw_pixel` 则是几万个；而且它和其他 op 一样有参数校验和事务回滚。
+
+`export` 只写交付物、不改文档：`{"op": "export", "format": "gif", "output": "walk.gif"}`；多帧精灵用 `format="png"` 时必须给 `frame`，`format="frames"` 会写成 `name1.png…nameN.png`，`format="sheet"` 支持 `layout` / `columns` / `padding` / `scale`。输出路径会解析成绝对路径；把 export 放在批次最后（或单独一批），避免后续 op 失败时留下未提交的产物。
 
 ```python
 apply_operations(ops=[

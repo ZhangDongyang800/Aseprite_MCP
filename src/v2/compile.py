@@ -82,6 +82,7 @@ end
 {categories}local _file = {file}
 local _results = {{}}
 local _sprite = nil
+local _should_save = {save_document}
 local function _resolve()
   if _sprite then return _sprite end
   _sprite = _G._mcp_get_sprite(_file)
@@ -97,10 +98,10 @@ end
 
 _BOOTSTRAP_OPS = {"create_sprite", "open_sprite"}
 
-_FOOTER = """if _saved_ok then
+_FOOTER = """if _saved_ok and _should_save then
   _mcp_maybe_save(_sprite, _file)
 end
-print("\\n{marker}" .. json.encode({{ops=_results, saved=_saved_ok and true or false, error=_run_error, transaction=_tx_used}}))
+print("\\n{marker}" .. json.encode({{ops=_results, saved=(_saved_ok and _should_save) and true or false, error=_run_error, transaction=_tx_used}}))
 """
 
 
@@ -110,6 +111,7 @@ def compile_ops(
     file_path: Path,
     scripts_dir: Path,
     atomic: bool,
+    save_document: bool = True,
 ) -> str:
     categories = sorted({spec.category for spec, _ in parsed if spec.lua})
     cat_lines = "".join(
@@ -121,6 +123,7 @@ def compile_ops(
         categories=cat_lines,
         file=lua_string(str(file_path)),
         marker=RESULT_MARKER,
+        save_document="true" if save_document else "false",
     )
 
     title = lua_string(f"MCP: {len(parsed)} ops")

@@ -1,0 +1,221 @@
+{
+  "asset": "moss slime hop",
+  "qa_generated": "2026-10-21",
+  "canvas": [
+    32,
+    32
+  ],
+  "frames": [
+    {
+      "frame": 1,
+      "bbox": {
+        "x": 5,
+        "y": 9,
+        "width": 22,
+        "height": 21
+      },
+      "coverage": 0.283203125,
+      "colors": 10,
+      "opaque": 290
+    },
+    {
+      "frame": 2,
+      "bbox": {
+        "x": 3,
+        "y": 12,
+        "width": 26,
+        "height": 18
+      },
+      "coverage": 0.2666015625,
+      "colors": 10,
+      "opaque": 273
+    },
+    {
+      "frame": 3,
+      "bbox": {
+        "x": 6,
+        "y": 3,
+        "width": 20,
+        "height": 25
+      },
+      "coverage": 0.3212890625,
+      "colors": 11,
+      "opaque": 329
+    },
+    {
+      "frame": 4,
+      "bbox": {
+        "x": 6,
+        "y": 1,
+        "width": 20,
+        "height": 24
+      },
+      "coverage": 0.3095703125,
+      "colors": 11,
+      "opaque": 317
+    },
+    {
+      "frame": 5,
+      "bbox": {
+        "x": 5,
+        "y": 1,
+        "width": 22,
+        "height": 21
+      },
+      "coverage": 0.283203125,
+      "colors": 11,
+      "opaque": 290
+    },
+    {
+      "frame": 6,
+      "bbox": {
+        "x": 6,
+        "y": 1,
+        "width": 20,
+        "height": 24
+      },
+      "coverage": 0.3095703125,
+      "colors": 10,
+      "opaque": 317
+    },
+    {
+      "frame": 7,
+      "bbox": {
+        "x": 3,
+        "y": 13,
+        "width": 26,
+        "height": 17
+      },
+      "coverage": 0.2568359375,
+      "colors": 10,
+      "opaque": 263
+    },
+    {
+      "frame": 8,
+      "bbox": {
+        "x": 5,
+        "y": 10,
+        "width": 22,
+        "height": 20
+      },
+      "coverage": 0.28125,
+      "colors": 10,
+      "opaque": 288
+    }
+  ],
+  "durations_ms": [
+    140,
+    100,
+    80,
+    80,
+    110,
+    90,
+    70,
+    130
+  ],
+  "tag": "hop",
+  "diffs": [
+    [
+      201,
+      [
+        3,
+        9,
+        29,
+        30
+      ]
+    ],
+    [
+      417,
+      [
+        3,
+        3,
+        29,
+        30
+      ]
+    ],
+    [
+      277,
+      [
+        6,
+        1,
+        26,
+        28
+      ]
+    ],
+    [
+      200,
+      [
+        5,
+        1,
+        27,
+        25
+      ]
+    ],
+    [
+      203,
+      [
+        5,
+        1,
+        27,
+        25
+      ]
+    ],
+    [
+      471,
+      [
+        3,
+        1,
+        29,
+        30
+      ]
+    ],
+    [
+      195,
+      [
+        3,
+        10,
+        29,
+        30
+      ]
+    ]
+  ],
+  "loop": {
+    "changed_pixels": 98,
+    "bbox": [
+      5,
+      9,
+      27,
+      30
+    ]
+  },
+  "mass_ratio": 1.251,
+  "gif": {
+    "frames": 8,
+    "durations_ms": [
+      140,
+      100,
+      80,
+      80,
+      110,
+      90,
+      70,
+      130
+    ]
+  },
+  "sheet": {
+    "size": [
+      128,
+      64
+    ],
+    "all_cells_match": true
+  },
+  "deliverables": [
+    "slime_hop.ase",
+    "export/frame1-8.png",
+    "export/slime_hop.gif",
+    "export/slime_hop@4x.gif",
+    "export/slime_hop_sheet.png",
+    "export/contact.png"
+  ],
+  "qa": "grid + frames + gif + sheet: PASS"
+}

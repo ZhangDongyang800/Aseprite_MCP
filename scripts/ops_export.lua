@@ -4,6 +4,28 @@ if not _G._mcp_common_loaded then
     if d then pcall(dofile, d .. "mcp_common.lua") end
 end
 
+-- Machine-readable document metadata travels with every export result. It is not a
+-- separate JSON artifact; callers that need a manifest can persist this payload.
+local function doc_metadata(sprite)
+    local durations = {}
+    for i, frame in ipairs(sprite.frames) do
+        durations[i] = frame.duration  -- seconds, same unit as set_durations
+    end
+    local tags = {}
+    for i, tag in ipairs(sprite.tags) do
+        tags[i] = {name = tag.name,
+                   from = tag.fromFrame.frameNumber,
+                   to = tag.toFrame.frameNumber}
+    end
+    return {frame_count = #sprite.frames, durations = durations, tags = tags}
+end
+
+local function with_metadata(sprite, data)
+    local meta = doc_metadata(sprite)
+    for key, value in pairs(meta) do data[key] = value end
+    return data
+end
+
 local function find_tag(sprite, name)
     for _, tag in ipairs(sprite.tags) do
         if tag.name == name then return tag end
@@ -63,10 +85,10 @@ local function export_png(sprite, params)
     local w, h = clone.width, clone.height
     clone:saveCopyAs(params.output)
     clone:close()
-    return {
+    return with_metadata(sprite, {
         artifact_path = params.output, artifact_kind = "png",
         width = w, height = h, frames = 1, frame = frame,
-    }
+    })
 end
 
 local function export_frames(sprite, params)
@@ -90,10 +112,10 @@ local function export_frames(sprite, params)
         local ext = params.output:sub(-4)
         for i = 1, count do paths[i] = base .. i .. ext end
     end
-    return {
+    return with_metadata(sprite, {
         artifact_paths = paths, artifact_kind = "png", artifact_role = "frame",
-        width = w, height = h, frames = count,
-    }
+        width = w, height = h, frames = count, from_frame = from, to_frame = to,
+    })
 end
 
 local function export_gif(sprite, params)
@@ -105,10 +127,10 @@ local function export_gif(sprite, params)
     local w, h, count = clone.width, clone.height, #clone.frames
     clone:saveCopyAs(params.output)
     clone:close()
-    return {
+    return with_metadata(sprite, {
         artifact_path = params.output, artifact_kind = "gif",
-        width = w, height = h, frames = count,
-    }
+        width = w, height = h, frames = count, from_frame = from, to_frame = to,
+    })
 end
 
 local function export_sheet(sprite, params)
@@ -154,10 +176,25 @@ local function export_sheet(sprite, params)
     out:saveCopyAs(params.output)
     out:close()
     clone:close()
-    return {
+
+    local scale = params.scale or 1
+    local rects = {}
+    for i = 1, n do
+        rects[i] = {
+            frame = from + i - 1,
+            x = ((i - 1) % cols) * (w + gap) * scale,
+            y = math.floor((i - 1) / cols) * (h + gap) * scale,
+            width = w * scale,
+            height = h * scale,
+        }
+    end
+    return with_metadata(sprite, {
         artifact_path = params.output, artifact_kind = "png",
-        width = out_w, height = out_h, frames = n, columns = cols, rows = rows,
-    }
+        width = out_w, height = out_h, frames = n,
+        columns = cols, rows = rows,
+        cell_width = w * scale, cell_height = h * scale,
+        from_frame = from, to_frame = to, frame_rects = rects,
+    })
 end
 
 function _G._mcp_op_export(sprite, params)

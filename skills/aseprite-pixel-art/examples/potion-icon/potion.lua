@@ -1,0 +1,21 @@
+return {
+  palette = { ["C"] = "#5A3524", ["G"] = "#4B3B57", ["K"] = "#241A2E", ["R"] = "#6E2233", ["W"] = "#FFF1DA", ["c"] = "#A9683C", ["g"] = "#8A7895", ["h"] = "#CFC2D2", ["n"] = "#D79A5B", ["o"] = "#ED6A5A", ["r"] = "#B93A4A" },
+  rows = {
+    "................",
+    ".....KKKKKK.....",
+    "....KnnncccK....",
+    ".....KnnccK.....",
+    ".....KCCCCK.....",
+    ".....KhggGK.....",
+    "....KhhggGK.....",
+    "...KWhggGGGK....",
+    "..KgRRRRRRRRK...",
+    ".KRRoorrrrrrRK..",
+    ".KooorrrrrrRRK..",
+    ".KoorrrrrWRRRK..",
+    "..KrrrrrrRWRK...",
+    "...KKrrrRRKK....",
+    ".....KKKKK......",
+    "................",
+  },
+}

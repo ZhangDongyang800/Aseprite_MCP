@@ -7,6 +7,7 @@ end
 local file = app.params["file"]
 local output = app.params["output"]
 local metrics_output = app.params["metrics_output"]
+local metrics_prev_output = app.params["metrics_prev_output"]
 local scale = tonumber(app.params["scale"] or "4") or 4
 local view = app.params["view"] or "composite"
 local want = tonumber(app.params["frame"] or "1") or 1
@@ -36,20 +37,34 @@ for i, tag in ipairs(sprite.tags) do
     tags[i] = {name = tag.name, from = tag.fromFrame.frameNumber, to = tag.toFrame.frameNumber}
 end
 
+-- On a multi-frame document saveCopyAs writes name1.png..nameN.png, never the agreed name.
+-- Collapse a copy to one frame; the original document keeps all its frames.
+local function collapse(copy, keep)
+    if keep < 1 then keep = 1 end
+    if keep > #copy.frames then keep = #copy.frames end
+    for i = #copy.frames, 1, -1 do
+        if i ~= keep then copy:deleteFrame(copy.frames[i]) end
+    end
+end
+
 -- Temp copy: neither the resize nor the export ever touches the original document
 local preview = Sprite(sprite)
-
--- On a multi-frame document saveCopyAs writes name1.png..nameN.png, never the agreed name.
--- Collapse the copy to frame `want` first; the original document keeps all its frames.
 if want < 1 then want = 1 end
 if want > #preview.frames then want = #preview.frames end
-for i = #preview.frames, 1, -1 do
-  if i ~= want then preview:deleteFrame(preview.frames[i]) end
-end
+collapse(preview, want)
 
 -- First save a scale=1 copy at native size for Python's metrics (no upscale/recolour skew)
 if metrics_output and metrics_output ~= "" then
     preview:saveCopyAs(metrics_output)
+end
+
+-- Optional previous-frame copy for a real adjacent diff. Keeping this out of the main
+-- preview path means the single-frame inspect cost is unchanged.
+if metrics_prev_output and metrics_prev_output ~= "" and want > 1 then
+    local previous = Sprite(sprite)
+    collapse(previous, want - 1)
+    previous:saveCopyAs(metrics_prev_output)
+    previous:close()
 end
 
 -- silhouette view: paint every non-transparent pixel of the copy black (copy only)

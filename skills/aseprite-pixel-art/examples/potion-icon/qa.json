@@ -1,0 +1,38 @@
+{
+  "asset": "potion icon",
+  "qa_generated": "2026-10-21",
+  "canvas": [
+    16,
+    16
+  ],
+  "bbox": {
+    "x": 1,
+    "y": 1,
+    "width": 13,
+    "height": 14
+  },
+  "coverage": 0.48046875,
+  "color_count": 11,
+  "palette": [
+    "#241A2E",
+    "#B93A4A",
+    "#6E2233",
+    "#8A7895",
+    "#ED6A5A",
+    "#4B3B57",
+    "#A9683C",
+    "#D79A5B",
+    "#5A3524",
+    "#CFC2D2",
+    "#FFF1DA"
+  ],
+  "semi_transparent_pixels": 0,
+  "isolated_pixels": 0,
+  "near_duplicate_colors": [],
+  "deliverables": [
+    "potion.ase",
+    "icon.png",
+    "icon@4x.png"
+  ],
+  "qa": "pixelqa grid + frames: PASS"
+}

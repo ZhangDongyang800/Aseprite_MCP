@@ -210,7 +210,7 @@ def register_v2_tools(mcp, session_manager, runner, config):
         """
         import json
 
-        from src.v2.inspect import compute_metrics
+        from src.v2.inspect import compute_metrics, frame_diff
 
         try:
             work = session_manager.get_work_dir(session_id)
@@ -228,12 +228,17 @@ def register_v2_tools(mcp, session_manager, runner, config):
 
         png = work / "preview.png"
         metrics_png = work / "metrics_src.png"
+        metrics_prev = work / "metrics_prev.png"
         with engine.session_lock(session_id):
-            result = runner.run_script("inspect.lua", {
+            metrics_prev.unlink(missing_ok=True)
+            params = {
                 "file": str(ase), "output": str(png),
                 "metrics_output": str(metrics_png),
                 "scale": str(scale), "view": view, "frame": str(frame),
-            })
+            }
+            if frame > 1:
+                params["metrics_prev_output"] = str(metrics_prev)
+            result = runner.run_script("inspect.lua", params)
             if not result["success"]:
                 message = result.get("error", "inspect failed")
                 return ToolResult(
@@ -261,6 +266,12 @@ def register_v2_tools(mcp, session_manager, runner, config):
 
             meta = json.loads(result["stdout"].strip().splitlines()[-1])
             metrics = compute_metrics(metrics_png, meta)
+            actual_frame = meta.get("frame", 1)
+            if actual_frame > 1 and metrics_prev.exists():
+                diff = frame_diff(metrics_png, metrics_prev)
+                metrics["frame_diffs"] = [{
+                    "from": actual_frame - 1, "to": actual_frame, **diff,
+                }]
             (work / "metrics.json").write_text(
                 json.dumps({"meta": meta, "metrics": metrics}, ensure_ascii=False, indent=2),
                 encoding="utf-8",

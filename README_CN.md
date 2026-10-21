@@ -106,11 +106,11 @@ TRAE、Claude Desktop、Cursor、Qoder 用的是同一份配置。
 
 | 工具 | 说明 |
 |------|------|
-| `apply_operations` | 在单个事务中执行一批 op——唯一的变更入口。传入 `session_id` + `ops[]`；`dry_run=true` 只校验、不产生副作用；批次包含破坏性 op（`clear_canvas`、`close_session`）时必须传 `confirmed=true`。省略 `session_id` 且首个 op 为 `create_sprite` / `open_sprite` 时会自动创建会话。 |
+| `apply_operations` | 在单个事务中执行一批 op——唯一的变更入口。传入 `session_id` + `ops[]`；`dry_run=true` 只校验、不产生副作用；批次包含破坏性 op（`clear_canvas`、`delete_layer`、`close_session`）时必须传 `confirmed=true`。省略 `session_id` 且首个 op 为 `create_sprite` / `open_sprite` 时会自动创建会话。 |
 | `inspect` | 只读感知：返回画布预览图与量化指标（调色板、颜色数、包围盒、覆盖率、半透明与孤立像素）。动画文档用 `frame=N` 逐帧查看。永不修改文档。 |
 | `run_lua` | 逃逸舱：执行任意 Lua。需要 `unsafe=true` 且 `confirmed=true`。 |
 
-op 是注册在 `src/v2/ops/` 中的命名操作（Pydantic 参数模型），其 Lua 实现位于 `scripts/ops_*.lua`。内置 op：`create_sprite`、`open_sprite`、`save_sprite`、`close_session`、`draw_pixel`、`draw_rect`、`fill_region`、`clear_canvas`、`undo`、`redo`，以及结构类的 `add_frames`、`set_durations`、`add_tag`、`paint_grid` 和 `export`（`png`/`gif`/`sheet`/`frames`；只写产物文件，不改文档）。
+op 是注册在 `src/v2/ops/` 中的命名操作（Pydantic 参数模型），其 Lua 实现位于 `scripts/ops_*.lua`。内置 op：`create_sprite`、`open_sprite`、`save_sprite`、`close_session`、`add_layer`、`set_layer`、`delete_layer`、`set_palette`、`draw_pixel`、`draw_rect`、`draw_line`、`draw_ellipse`、`fill_region`、`clear_canvas`、`undo`、`redo`，以及结构类的 `add_frames`、`set_durations`、`add_tag`、`paint_grid` 和 `export`（`png`/`gif`/`sheet`/`frames`；只写产物文件，不改文档）。
 
 `paint_grid` 接收一个 Lua 数据文件路径，文件返回 `{palette = {b = "#F0A65A"}, rows = {"..bb..", ...}}`，一个字符一个像素，`.` 表示透明。整张图的像素因此不必经过工具调用：32×32 四帧走 `paint_grid` 只花几百 token，走 `draw_pixel` 则是几万个；而且它和其他 op 一样有参数校验和事务回滚。
 

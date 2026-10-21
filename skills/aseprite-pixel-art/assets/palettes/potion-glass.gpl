@@ -1,0 +1,15 @@
+GIMP Palette
+Name: Potion Glass
+Columns: 4
+# 16x16 potion icon palette. Outline is a hue-shifted plum, not pure black.
+ 36  26  46	outline
+ 90  53  36	cork shadow
+169 104  60	cork mid
+215 154  91	cork light
+ 75  59  87	glass shadow
+138 120 149	glass mid
+207 194 210	glass highlight
+110  34  51	liquid shadow
+185  58  74	liquid mid
+237 106  90	liquid light
+255 241 218	specular

@@ -20,7 +20,7 @@ DEAD_NAMES = frozenset({
     "draw_from_grid", "get_canvas_preview", "clear_region", "add_outline",
     "mirror_half", "replace_color", "export_gif", "add_frame",
     "set_frame_duration", "apply_timing_preset", "check_canvas_standards",
-    "add_layer", "get_layer_info", "set_layer_properties", "propagate_cels",
+    "get_layer_info", "set_layer_properties", "propagate_cels",
     "tween_cel", "compare_frames", "export_contact_sheet",
     "create_tileset_canvas", "export_tiled_preview", "batch_edit",
     "import_png", "load_palette", "apply_palette", "append_palette",
@@ -30,15 +30,17 @@ DEAD_NAMES = frozenset({
     "adjust_colors", "apply_blur", "get_frame_info", "get_tags",
     "duplicate_frame", "remove_frame", "remove_tag", "duplicate_layer",
     "remove_layer", "merge_down", "flatten", "flip_canvas", "rotate_canvas",
-    "resize_sprite", "crop_sprite", "draw_line", "draw_ellipse",
-    "draw_gradient", "create_sprite_canvas", "move_cel",
+    "resize_sprite", "crop_sprite", "draw_gradient",
+    "create_sprite_canvas", "move_cel",
     "tween_cel_positions", "tween_cel_scale", "tween_cel_opacity",
 })
 
 LIVE_TOOLS = ("apply_operations", "inspect", "run_lua")
 LIVE_OPS = (
     "create_sprite", "open_sprite", "save_sprite", "close_session",
-    "draw_pixel", "draw_rect", "fill_region", "paint_grid", "clear_canvas",
+    "add_layer", "set_layer", "delete_layer", "set_palette",
+    "draw_pixel", "draw_rect", "draw_line", "draw_ellipse",
+    "fill_region", "paint_grid", "clear_canvas",
     "add_frames", "set_durations", "add_tag", "export", "undo", "redo",
 )
 _IDENTIFIER = re.compile(r"[A-Za-z_][A-Za-z0-9_]*")

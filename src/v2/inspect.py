@@ -65,6 +65,36 @@ def _near_duplicates(colors: list[tuple[int, ...]],
     return dupes
 
 
+def frame_diff(current_path: Path, previous_path: Path) -> dict:
+    """Pixel-exact diff between two exported frames (same size)."""
+    current = Image.open(current_path).convert("RGBA")
+    previous = Image.open(previous_path).convert("RGBA")
+    if current.size != previous.size:
+        return {"changed_pixels": None, "bbox": None,
+                "error": f"frame sizes differ: {current.size} vs {previous.size}"}
+    diff = ImageChops.difference(current, previous)
+    # RGBA.getbbox() looks at alpha only; two opaque colours have an alpha difference of 0.
+    # Union the RGB and alpha bounds so a colour-only change still gets a real box.
+    rgb_box = diff.convert("RGB").getbbox()
+    alpha_box = diff.getchannel("A").getbbox()
+    boxes = [b for b in (rgb_box, alpha_box) if b is not None]
+    if not boxes:
+        return {"changed_pixels": 0, "bbox": None}
+    bbox = (min(b[0] for b in boxes), min(b[1] for b in boxes),
+            max(b[2] for b in boxes), max(b[3] for b in boxes))
+    # The histogram is bounded by the number of distinct RGBA values, not pixels, so this
+    # count stays cheap even on a 4096² frame.
+    histogram = diff.getcolors(maxcolors=EXACT_COLOR_LIMIT)
+    changed = None if histogram is None else sum(
+        count for count, color in histogram if color != (0, 0, 0, 0)
+    )
+    return {
+        "changed_pixels": changed,
+        "bbox": {"x": bbox[0], "y": bbox[1],
+                 "width": bbox[2] - bbox[0], "height": bbox[3] - bbox[1]},
+    }
+
+
 def _color_stats(img: Image.Image):
     """(visible colors sorted by usage, semi-transparent count, visible pixel count)."""
     histogram = img.getcolors(maxcolors=EXACT_COLOR_LIMIT)
@@ -101,7 +131,6 @@ def compute_metrics(png_path: Path, meta: dict) -> dict:
         "coverage": opaque_count / (width * height),
         "semi_transparent_pixels": semi,
         "isolated_pixels": _isolated(alpha),
-        "grid_offset": {"x": 0, "y": 0},
         "frame_diffs": [],
     }
     if approximate:

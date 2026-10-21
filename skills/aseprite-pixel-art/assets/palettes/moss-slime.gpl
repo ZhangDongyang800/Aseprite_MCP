@@ -1,0 +1,15 @@
+GIMP Palette
+Name: Moss Slime
+Columns: 4
+# 32x32 moss slime palette. One green ramp plus shared eye/mouth/leaf colours.
+ 30  26  46	outline
+ 36  82  59	deep
+ 47 122  82	shadow
+ 79 174 104	mid
+139 217 122	light
+214 245 160	highlight
+ 21  18  31	eye
+255 246 214	glint / fang
+110  34  51	mouth
+ 47 107  58	leaf dark
+127 191  77	leaf mid

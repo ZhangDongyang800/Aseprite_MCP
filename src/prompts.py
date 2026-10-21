@@ -43,29 +43,36 @@ inspect(session_id, scale=4, view="composite", frame=1)
 
 run_lua(session_id, code, unsafe=False, confirmed=False)
   逃逸舱，跑任意 Aseprite Lua。必须 unsafe=true 且 confirmed=true，两个都要。
-  只在 op 词汇确实做不到时用 —— 目前主要是新建图层。能用 op 表达的，不要用它。
+  只在 op 词汇确实做不到时用 —— 目前主要是图层组、混合模式、区域变换。
+  能用 op 表达的，不要用它。
   CLI 模式下 snippet 失败会回滚 .ase，成功则留一份 undo 备份。
 
 ── 破坏性 op 的确认门闩 ──
-  clear_canvas（清空当前层/帧）和 close_session（销毁会话）是破坏性 op。
+  clear_canvas（清空当前层/帧，layer=0 清整帧所有层）、delete_layer 和
+  close_session（销毁会话）是破坏性 op。
   批量里只要出现其中一个，没带 confirmed=true 就整批拒绝，什么都不会发生。
   → 重画或收工销毁时，apply_operations 要显式传 confirmed=true。
 
 ── op 词汇表（完整，就这些）──
   会话  create_sprite(width, height, color_mode) / open_sprite(path) /
-        save_sprite(path) / close_session
+        save_sprite(path) / close_session /
+        add_layer(name, opacity) / set_layer(layer, name, opacity, visible) /
+        delete_layer(layer) / set_palette(colors)
   绘制  draw_pixel(x, y, color) / draw_rect(x, y, width, height, color, filled) /
-        fill_region(x, y, color) / paint_grid(path, x, y) / clear_canvas
+        draw_line(x1, y1, x2, y2, color) /
+        draw_ellipse(cx, cy, rx, ry, color, filled) /
+        fill_region(x, y, color) / paint_grid(path, x, y) / clear_canvas(layer, frame)
   结构  add_frames(count, duration, duplicate) / set_durations(durations) /
         add_tag(name, from_frame, to_frame)
   输出  export(format="png"|"gif"|"sheet"|"frames", output, scale=1,
          frame, tag, layout, columns, padding) —— 只写文件，不改文档
   历史  undo / redo（必须单独成批，不能和其他 op 混在一批里）
   所有绘制类 op 都接受 layer（1 起）和 frame（1 起），默认都是 1。
+  indexed 文档先 set_palette 再画；索引 0 是透明索引。
 
 ── 两件必须知道的事 ──
-  1. 新建的精灵只有 1 层 1 帧。帧不够用 add_frames 补；图层没有对应的 op，
-     第 2 层及以后必须先用 run_lua 建出来 —— 没有更省事的办法，别去编。
+  1. 新建的精灵只有 1 层 1 帧。帧不够用 add_frames 补；图层用 add_layer 建，
+     新层追加在顶部，layer 参数用 1 起的层号。clear_canvas(layer=0) 清整帧所有层。
   2. paint_grid 的 path 必须指向一个 Lua 数据文件，返回
      {palette = {字符="#RRGGBB", ...}, rows = {"...", ...}}。
      Aseprite 这版 Lua 没有 loadstring，JSON 读不出 table，所以只能用这个格式。
@@ -197,7 +204,8 @@ def register_prompts(mcp):
 - 使用 4-8 种颜色（专业像素艺术的核心约束）
 - 每种主色必须配套阴影色（RGB×0.7）和高光色（RGB×1.3，上限255）
 - 轮廓色统一使用最深色（通常 #000000）
-- create_sprite 的 color_mode 默认 rgb，可改为 indexed（像素画更推荐）
+- create_sprite 的 color_mode 默认 rgb，可改为 indexed；indexed 必须先 set_palette，
+  且索引 0 是透明索引（画在索引 1 及以后）
 
 ══════════════════════════════════════════
 op 使用优先级：
@@ -208,7 +216,7 @@ op 使用优先级：
   4. fill_region   ← 已有区域的同色填充
   5. export        ← 交付 PNG/GIF/精灵表，不改文档（需要文件时最后调用）
   6. clear_canvas  ← 推倒重来（破坏性，需 confirmed=true）
-  7. run_lua       ← 仅限新建图层等 op 做不到的事（需 unsafe + confirmed）
+  7. run_lua       ← 仅限图层组/混合模式/区域变换等 op 做不到的事（需 unsafe + confirmed）
 """
 
     @mcp.prompt
@@ -418,9 +426,9 @@ op 使用优先级：
 
 ══════════════════════════════════════════
 分层说明（诚实版）：══════════════════════════════════════════
-  "会动的部件单独建层"是好习惯，但**没有新建图层的 op**。
-  新建的精灵只有第 1 层。想分层就得先用 run_lua 建层
-  （需要 unsafe=true 且 confirmed=true），之后绘制 op 的 layer 参数才有意义。
+  "会动的部件单独建层"是好习惯。用 add_layer 建层（新层追加在顶部），
+  再用 set_layer 调 name/opacity/visible；之后绘制 op 的 layer 参数才有意义。
+  图层组、混合模式仍需 run_lua（unsafe=true 且 confirmed=true）。
   不分层也能用上面的增量编辑法做好帧一致性 —— 分层只是锦上添花。
 
 ══════════════════════════════════════════
@@ -458,16 +466,14 @@ op 使用优先级：
 ══════════════════════════════════════════
 多图层现实（先看这段，免得白忙）
 ══════════════════════════════════════════
-  **op 词汇表里没有新建图层的 op。** 新建的精灵只有第 1 层。
-  所以 layer_count > 1 时，流程必然是：
+  新建的精灵只有第 1 层。layer_count > 1 时，先加层再逐层绘制：
 
-    run_lua 建层 → 再用 apply_operations 逐层绘制
+    apply_operations(ops=[{{"op": "add_layer", "name": "主体"}}, ...])
+    → 再用 paint_grid 的 layer 参数逐层画
 
-  run_lua(session_id, code, unsafe=true, confirmed=true) —— 两个开关都必须传，
-  缺一个就被门闩挡住。建层就是往当前精灵的 layers 里插新层，
-  具体 Lua 自行斟酌，失败会回滚文档，不会留下半成品。
-
-  只有一个图层时，跳过 run_lua，直接在第 1 层上画。
+  add_layer 返回新层的 1 起索引；新层追加在顶部。set_layer 调
+  name/opacity/visible，delete_layer 删除（破坏性，需要 confirmed=true）。
+  只有图层组或混合模式才需要 run_lua（unsafe=true 且 confirmed=true）。
 
 ══════════════════════════════════════════
 多图层工作流程：
@@ -476,7 +482,8 @@ op 使用优先级：
 第1步：建画布，建层
   apply_operations(ops=[{{"op": "create_sprite", "width": {width},
                         "height": {height}}}])
-  然后 run_lua 把第 1 层改成背景层，再加出主体层、前景层。
+  用 set_layer 把第 1 层改成背景层，再用 add_layer 加出主体层、前景层。
+  新层追加在顶部；add_layer 返回 1 起索引。
 
   注意：层号是 1 起的（Aseprite 惯例，越大越靠上），
   绘制 op 的 layer 参数直接用这个层号。
@@ -522,7 +529,7 @@ op 使用优先级：
 ══════════════════════════════════════════
 诚实的能力边界：
 ══════════════════════════════════════════
-  - 建层、调图层属性/混合模式 → 只能 run_lua（unsafe + confirmed）
+  - 建层/图层属性 → add_layer / set_layer / delete_layer；混合模式才用 run_lua
   - 帧的相关操作 → 用 add_frames / set_durations / add_tag，不必碰 Lua
   - 其余绘制 → apply_operations 的 op 就够了
   - 收工销毁会话 → close_session 是破坏性 op，需要 confirmed=true

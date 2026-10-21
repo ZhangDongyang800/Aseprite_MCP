@@ -14,8 +14,12 @@ class _Targeted(BaseModel):
     frame: int = Field(default=1, ge=1)
 
 
-class ClearCanvas(_Targeted):
-    pass
+class ClearCanvas(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    # layer=0 is a frame-wide clear across every layer; 1-based otherwise.
+    layer: int = Field(default=1, ge=0)
+    frame: int = Field(default=1, ge=1)
 
 
 class DrawPixel(_Targeted):
@@ -39,6 +43,23 @@ class FillRegion(_Targeted):
     color: str = Field(pattern=_HEX)
 
 
+class DrawLine(_Targeted):
+    x1: int
+    y1: int
+    x2: int
+    y2: int
+    color: str = Field(pattern=_HEX)
+
+
+class DrawEllipse(_Targeted):
+    cx: int
+    cy: int
+    rx: int = Field(ge=1)
+    ry: int = Field(ge=1)
+    color: str = Field(pattern=_HEX)
+    filled: bool = False
+
+
 class PaintGrid(_Targeted):
     path: str
     x: int = Field(default=0, ge=0)
@@ -54,6 +75,10 @@ def register() -> None:
                              lua="_mcp_op_draw_rect", mutating=True))
     REGISTRY.register(OpSpec("fill_region", "draw", FillRegion,
                              lua="_mcp_op_fill_region", mutating=True))
+    REGISTRY.register(OpSpec("draw_line", "draw", DrawLine,
+                             lua="_mcp_op_draw_line", mutating=True))
+    REGISTRY.register(OpSpec("draw_ellipse", "draw", DrawEllipse,
+                             lua="_mcp_op_draw_ellipse", mutating=True))
     REGISTRY.register(OpSpec("paint_grid", "draw", PaintGrid,
                              lua="_mcp_op_paint_grid", mutating=True))
 

@@ -116,11 +116,11 @@ Exactly three MCP tools:
 
 | Tool | Description |
 |------|-------------|
-| `apply_operations` | Execute a batch of ops inside one transaction — the only mutation entry point. Pass `session_id` + `ops[]`; `dry_run=true` validates without side effects; `confirmed=true` is required when the batch contains a destructive op (`clear_canvas`, `close_session`). If `session_id` is omitted and the first op is `create_sprite` / `open_sprite`, a session is created automatically. |
+| `apply_operations` | Execute a batch of ops inside one transaction — the only mutation entry point. Pass `session_id` + `ops[]`; `dry_run=true` validates without side effects; `confirmed=true` is required when the batch contains a destructive op (`clear_canvas`, `delete_layer`, `close_session`). If `session_id` is omitted and the first op is `create_sprite` / `open_sprite`, a session is created automatically. |
 | `inspect` | Read-only perception: returns a canvas preview image plus quantitative metrics (palette, color count, bounding box, coverage, semi-transparent and isolated pixels). On animated documents, `frame=N` steps through frames one at a time. Never modifies the document. |
 | `run_lua` | Escape hatch: run arbitrary Lua. Requires `unsafe=true` and `confirmed=true`. |
 
-Ops are named operations registered in `src/v2/ops/` (Pydantic parameter models) with their Lua implementations in `scripts/ops_*.lua`. Built-in ops: `create_sprite`, `open_sprite`, `save_sprite`, `close_session`, `draw_pixel`, `draw_rect`, `fill_region`, `clear_canvas`, `undo`, `redo`, plus the structural ones — `add_frames`, `set_durations`, `add_tag`, `paint_grid`, and `export` (`png`/`gif`/`sheet`/`frames`; it writes artifact files but never changes the document).
+Ops are named operations registered in `src/v2/ops/` (Pydantic parameter models) with their Lua implementations in `scripts/ops_*.lua`. Built-in ops: `create_sprite`, `open_sprite`, `save_sprite`, `close_session`, `add_layer`, `set_layer`, `delete_layer`, `set_palette`, `draw_pixel`, `draw_rect`, `draw_line`, `draw_ellipse`, `fill_region`, `clear_canvas`, `undo`, `redo`, plus the structural ones — `add_frames`, `set_durations`, `add_tag`, `paint_grid`, and `export` (`png`/`gif`/`sheet`/`frames`; it writes artifact files but never changes the document).
 
 `paint_grid` takes a path to a Lua file returning `{palette = {b = "#F0A65A"}, rows = {"..bb..", ...}}`, one character per pixel, `.` for transparent. It keeps whole-sprite art out of the tool call: a 32×32 four-frame sheet costs a few hundred tokens through `paint_grid` instead of tens of thousands as `draw_pixel` ops, and still runs validated and inside the same rollback as everything else.
 
